@@ -1,66 +1,151 @@
-#🔍 Multimodal Deepfake Detection using Explainable AI
+<h1 align="center" style="font-size: 3em;">🔍 Multimodal Deepfake Detection using Explainable AI</h1>
 
-##📌 Overview
+<p align="center">
+An AI-powered system to detect manipulated media using audio-visual fusion and transparent explainability
+</p>
 
-Deepfake technology has made it increasingly difficult to verify the authenticity of digital media. This project presents a multimodal deepfake detection system that analyzes both video and audio streams to accurately identify manipulated content. The system integrates Explainable AI (XAI) techniques to provide transparent and interpretable results, making it suitable for real-world and enterprise use cases.
+---
 
-##🎯 Problem Statement
+## 📌 Overview
 
-With the rapid growth of AI-generated media, deepfakes pose serious threats in areas such as misinformation, identity fraud, cybercrime, and digital evidence tampering. Traditional detection systems are often single-modal and act as black boxes. This project aims to overcome these limitations by combining audio-visual analysis with explainability.
+Deepfake technology has made it increasingly difficult to trust digital media. This project introduces a **multimodal deepfake detection system** that analyzes both **video and audio inputs** to classify media as real or fake. To ensure transparency, **Explainable AI (XAI)** techniques are used to highlight manipulated regions and features.
 
-##💡 Key Features
+---
 
-Multimodal deepfake detection (Video + Audio)
+## 🎯 Problem Statement
 
-Face-based video analysis using deep learning
+The rise of AI-generated fake videos and voices has created serious threats in misinformation, fraud, and digital forensics. Most existing solutions are either single-modal or black-box models. This project addresses these challenges by combining **audio-visual analysis** with **interpretable deep learning**.
 
-Audio analysis using spectrogram-based CNNs
+---
 
-Audio-visual feature fusion for higher accuracy
+## 🚀 Key Features
 
-Explainable AI using Grad-CAM and saliency maps
+* 🎥 Video-based deepfake detection using CNNs
+* 🔊 Audio deepfake detection via spectrogram analysis
+* 🔗 Multimodal fusion for higher accuracy
+* 🧠 Explainable AI using Grad-CAM and saliency maps
+* 📊 Confidence score with visual explanations
+* 🌐 Scalable backend for real-world deployment
 
-Confidence score with visual explanations
+---
 
-Scalable and deployable architecture
+## 🧠 System Architecture
 
-##⚙️ Tech Stack
+```
+Video Input
+   ↓
+Frame & Audio Extraction
+   ↓
+Video CNN (Face Analysis)      Audio CNN (Spectrogram)
+           ↓                    ↓
+         Feature Fusion (Multimodal)
+                    ↓
+              Classification
+                    ↓
+           Explainable AI (XAI)
+                    ↓
+              Final Prediction
+```
 
-Programming Language: Python
+---
 
-Deep Learning: PyTorch
+## ⚙️ Tech Stack
 
-Computer Vision: OpenCV
+* **Language:** Python
+* **Deep Learning:** PyTorch
+* **Computer Vision:** OpenCV
+* **Audio Processing:** Librosa
+* **Explainability:** Grad-CAM, Saliency Maps
+* **Backend:** Flask / FastAPI
+* **Frontend:** HTML, CSS, JavaScript / React
+* **Deployment:** AWS / Local
 
-Audio Processing: Librosa
+---
 
-Explainability: Grad-CAM, Saliency Maps
+## 📂 Project Structure
 
-Backend: Flask / FastAPI
+```
+deepfake-detection/
+│
+├── data/
+│   ├── video/
+│   └── audio/
+│
+├── models/
+│   ├── video_model.py
+│   ├── audio_model.py
+│   └── fusion_model.py
+│
+├── explainability/
+│   ├── grad_cam.py
+│   └── audio_saliency.py
+│
+├── utils/
+│   ├── frame_extraction.py
+│   └── audio_extraction.py
+│
+├── app.py
+├── requirements.txt
+└── README.md
+```
 
-Frontend: HTML, CSS, JavaScript / React
+---
 
-Deployment: AWS / Local Server
+## 📊 Datasets Used
 
+* **FaceForensics++** – Video deepfake dataset
+* **DFDC (Facebook Deepfake Detection Challenge)**
+* **ASVspoof 2019** – Audio deepfake dataset
 
-##🚀 How It Works
+> Due to large dataset sizes, only selected subsets are used.
 
-User uploads a video file
+---
 
-Frames and audio are extracted
+## 🧪 How It Works
 
-Facial features and audio spectrograms are analyzed
+1. User uploads a video file
+2. Frames and audio are extracted
+3. Video and audio models analyze inputs
+4. Multimodal fusion combines predictions
+5. Explainable AI highlights suspicious regions
+6. Final result with confidence score is displayed
 
-Multimodal fusion combines predictions
+---
 
-Model outputs Real / Fake with confidence
+## 🔐 Use Cases
 
-Explainable AI highlights manipulated regions
+* 📰 Media and news verification
+* ⚖️ Digital forensics and law enforcement
+* 🛡️ Fraud and identity protection
+* 📱 Social media content moderation
+* 🗳️ Election and misinformation security
 
-##🧪 Results
+---
 
-Improved accuracy using multimodal fusion compared to single-modal models
+## 🔮 Future Enhancements
 
-Visual explanations improve trust and interpretability
+* Real-time deepfake detection
+* Transformer-based video models
+* Attention-based fusion techniques
+* Browser and video-call integrations
+* Cloud-based API service
 
-Robust performance across multiple deepfake datasets
+---
+
+## 👩‍💻 Author
+
+**Vanshika Saxena**
+B.Tech Computer Science
+AI & Machine Learning Enthusiast
+
+---
+
+## ⭐ Acknowledgements
+
+* Open-source AI and ML community
+* Research papers on deepfake detection
+* Publicly available datasets
+
+---
+
+<p align="center">⭐ If you find this project useful, consider giving it a star!</p>
