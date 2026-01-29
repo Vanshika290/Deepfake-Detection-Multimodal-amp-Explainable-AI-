@@ -1,14 +1,14 @@
-🔍 Multimodal Deepfake Detection using Explainable AI
+#🔍 Multimodal Deepfake Detection using Explainable AI
 
-📌 Overview
+##📌 Overview
 
 Deepfake technology has made it increasingly difficult to verify the authenticity of digital media. This project presents a multimodal deepfake detection system that analyzes both video and audio streams to accurately identify manipulated content. The system integrates Explainable AI (XAI) techniques to provide transparent and interpretable results, making it suitable for real-world and enterprise use cases.
 
-🎯 Problem Statement
+##🎯 Problem Statement
 
 With the rapid growth of AI-generated media, deepfakes pose serious threats in areas such as misinformation, identity fraud, cybercrime, and digital evidence tampering. Traditional detection systems are often single-modal and act as black boxes. This project aims to overcome these limitations by combining audio-visual analysis with explainability.
 
-💡 Key Features
+##💡 Key Features
 
 Multimodal deepfake detection (Video + Audio)
 
@@ -24,7 +24,7 @@ Confidence score with visual explanations
 
 Scalable and deployable architecture
 
-⚙️ Tech Stack
+##⚙️ Tech Stack
 
 Programming Language: Python
 
@@ -43,7 +43,7 @@ Frontend: HTML, CSS, JavaScript / React
 Deployment: AWS / Local Server
 
 
-🚀 How It Works
+##🚀 How It Works
 
 User uploads a video file
 
@@ -57,7 +57,7 @@ Model outputs Real / Fake with confidence
 
 Explainable AI highlights manipulated regions
 
-🧪 Results
+##🧪 Results
 
 Improved accuracy using multimodal fusion compared to single-modal models
 
