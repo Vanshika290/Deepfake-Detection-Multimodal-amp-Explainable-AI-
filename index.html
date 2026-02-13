@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TruthLens AI - Deepfake Detection</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #8AB4F8;
+            --secondary: #c58af9;
+            --accent: #00e5ff;
+            --bg-dark: #0f172a;
+            --card-dark: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+            --danger: #ef4444;
+            --glass: rgba(30, 41, 59, 0.7);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(138, 180, 248, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(197, 138, 249, 0.08), transparent 25%);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            perspective: 1000px;
+        }
+
+        /* 3D Header */
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            transform-style: preserve-3d;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        h1 {
+            font-size: 4rem;
+            font-weight: 800;
+            background: linear-gradient(to right, var(--primary), var(--secondary), var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 10px 30px rgba(138, 180, 248, 0.3);
+            letter-spacing: -2px;
+        }
+
+        .subtitle {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            font-weight: 300;
+        }
+
+        /* 3D Navigation Tabs */
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+            perspective: 1000px;
+        }
+
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            backdrop-filter: blur(10px);
+            transform-style: preserve-3d;
+        }
+
+        .nav-btn:hover {
+            transform: translateY(-5px) rotateX(10deg);
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+            color: var(--text-main);
+        }
+
+        .nav-btn.active {
+            background: linear-gradient(135deg, rgba(138, 180, 248, 0.2), rgba(197, 138, 249, 0.2));
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: 0 0 20px rgba(138, 180, 248, 0.3);
+            transform: scale(1.05);
+        }
+
+        .nav-btn i {
+            font-size: 1.2rem;
+        }
+
+        /* Main Content Area */
+        .content-area {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow:
+                0 20px 50px rgba(0, 0, 0, 0.3),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+            min-height: 500px;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s ease;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Upload Zone */
+        .upload-zone {
+            border: 3px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 4rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .upload-zone:hover,
+        .upload-zone.dragover {
+            border-color: var(--primary);
+            background: rgba(138, 180, 248, 0.05);
+            transform: scale(1.01);
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .upload-zone:hover .upload-icon {
+            color: var(--primary);
+            transform: translateY(-10px);
+        }
+
+        .file-input {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* Preview Area */
+        .preview-container {
+            margin-top: 2rem;
+            text-align: center;
+        }
+
+        .media-preview {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .waveform-visual {
+            width: 100%;
+            height: 100px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+        }
+
+        .bar {
+            width: 4px;
+            background: var(--primary);
+            border-radius: 2px;
+            animation: sound 1s infinite ease-in-out;
+        }
+
+        /* Text Input */
+        .text-input-area {
+            width: 100%;
+            height: 200px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            color: var(--text-main);
+            font-size: 1.1rem;
+            font-family: inherit;
+            resize: none;
+            transition: all 0.3s ease;
+        }
+
+        .text-input-area:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 20px rgba(138, 180, 248, 0.1);
+        }
+
+        /* Action Buttons */
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .action-btn {
+            padding: 1rem 3rem;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            box-shadow: 0 10px 20px rgba(138, 180, 248, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(138, 180, 248, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: var(--text-muted);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--text-main);
+            color: var(--text-main);
+        }
+
+        /* Results Modal */
+        .result-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            z-index: 100;
+            border-radius: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.5s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .result-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .result-card {
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+            transform: scale(0.9);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .result-overlay.active .result-card {
+            transform: scale(1);
+        }
+
+        .prediction-badge {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+            display: inline-block;
+            padding: 0.5rem 2rem;
+            border: 4px solid currentColor;
+            border-radius: 12px;
+        }
+
+        .prediction-badge.fake {
+            color: var(--danger);
+            text-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.2), inset 0 0 30px rgba(239, 68, 68, 0.2);
+        }
+
+        .prediction-badge.real {
+            color: var(--success);
+            text-shadow: 0 0 30px rgba(16, 185, 129, 0.4);
+            box-shadow: 0 0 30px rgba(16, 185, 129, 0.2), inset 0 0 30px rgba(16, 185, 129, 0.2);
+        }
+
+        .confidence-display {
+            font-size: 1.5rem;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        .confidence-value {
+            color: var(--text-main);
+            font-weight: 700;
+        }
+
+        .loader {
+            width: 48px;
+            height: 48px;
+            border: 5px solid #FFF;
+            border-bottom-color: var(--primary);
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        @keyframes sound {
+            0% {
+                height: 5px;
+            }
+
+            50% {
+                height: 40px;
+            }
+
+            100% {
+                height: 5px;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .notification {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            background: var(--card-dark);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .notification.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>TruthLens AI</h1>
+            <p class="subtitle">Next-Gen Multi-Modal Deepfake Detection</p>
+        </header>
+
+        <nav class="nav-tabs">
+            <div class="nav-btn active" onclick="switchTab('video')">
+                <i class="fas fa-video"></i> Video
+            </div>
+            <div class="nav-btn" onclick="switchTab('audio')">
+                <i class="fas fa-microphone-lines"></i> Audio
+            </div>
+            <div class="nav-btn" onclick="switchTab('image')">
+                <i class="fas fa-image"></i> Image
+            </div>
+            <div class="nav-btn" onclick="switchTab('text')">
+                <i class="fas fa-file-text"></i> Text
+            </div>
+        </nav>
+
+        <main class="content-area">
+            <!-- Loading Overlay -->
+            <div class="result-overlay" id="loadingOverlay">
+                <div class="result-card">
+                    <span class="loader"></span>
+                    <h3 style="margin-top: 1rem;">Analyzing Integrity...</h3>
+                </div>
+            </div>
+
+            <!-- Result Overlay -->
+            <div class="result-overlay" id="resultOverlay">
+                <div class="result-card">
+                    <div id="finalBadge" class="prediction-badge">FAKE</div>
+                    <div class="confidence-display">
+                        Confidence Score: <span id="finalConfidence" class="confidence-value">98.5%</span>
+                    </div>
+                    <p id="resultDetails" style="color: var(--text-muted); margin-bottom: 2rem;">
+                        Analysis detected significant anomalies in frame consistency.
+                    </p>
+                    <button class="btn-primary action-btn" onclick="closeResult()">Analyze Another</button>
+                </div>
+            </div>
+
+            <!-- Video Tab -->
+            <div id="videoTab" class="tab-content active">
+                <div class="upload-zone" id="videoDrop" onclick="document.getElementById('videoInput').click()">
+                    <input type="file" id="videoInput" class="file-input" accept="video/*" hidden>
+                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                    <h3>Drop Video File Here</h3>
+                    <p style="color: var(--text-muted)">Supports MP4, AVI, MOV (Max 50MB)</p>
+                </div>
+                <div id="videoPreview" class="preview-container hidden">
+                    <video id="videoElement" controls class="media-preview"></video>
+                    <div class="btn-group">
+                        <button class="btn-secondary action-btn" onclick="resetUpload('video')">Cancel</button>
+                        <button class="btn-primary action-btn" onclick="analyze('video')">Scan Video</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audio Tab -->
+            <div id="audioTab" class="tab-content">
+                <div class="upload-zone" id="audioDrop" onclick="document.getElementById('audioInput').click()">
+                    <input type="file" id="audioInput" class="file-input" accept="audio/*" hidden>
+                    <i class="fas fa-music upload-icon"></i>
+                    <h3>Drop Audio File Here</h3>
+                    <p style="color: var(--text-muted)">Supports WAV, MP3, FLAC</p>
+                </div>
+                <div id="audioPreview" class="preview-container hidden">
+                    <div class="waveform-visual" id="waveform">
+                        <!-- Bars generated by JS -->
+                    </div>
+                    <audio id="audioElement" controls style="width: 100%; margin-top: 1rem;"></audio>
+                    <div class="btn-group">
+                        <button class="btn-secondary action-btn" onclick="resetUpload('audio')">Cancel</button>
+                        <button class="btn-primary action-btn" onclick="analyze('audio')">Scan Audio</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Image Tab -->
+            <div id="imageTab" class="tab-content">
+                <div class="upload-zone" id="imageDrop" onclick="document.getElementById('imageInput').click()">
+                    <input type="file" id="imageInput" class="file-input" accept="image/*" hidden>
+                    <i class="fas fa-image upload-icon"></i>
+                    <h3>Drop Image File Here</h3>
+                    <p style="color: var(--text-muted)">Supports PNG, JPG, JPEG</p>
+                </div>
+                <div id="imagePreview" class="preview-container hidden">
+                    <img id="imageElement" class="media-preview">
+                    <div class="btn-group">
+                        <button class="btn-secondary action-btn" onclick="resetUpload('image')">Cancel</button>
+                        <button class="btn-primary action-btn" onclick="analyze('image')">Scan Image</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Text Tab -->
+            <div id="textTab" class="tab-content">
+                <textarea id="textInput" class="text-input-area"
+                    placeholder="Paste suspicious text here to analyze for AI generation patterns..."></textarea>
+                <div class="btn-group">
+                    <button class="btn-secondary action-btn"
+                        onclick="document.getElementById('textInput').value=''">Clear</button>
+                    <button class="btn-primary action-btn" onclick="analyze('text')">Scan Text</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script>
+        // Init visualizer
+        const waveform = document.getElementById('waveform');
+        for (let i = 0; i < 50; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'bar';
+            bar.style.height = Math.random() * 40 + 'px';
+            bar.style.animationDelay = Math.random() + 's';
+            waveform.appendChild(bar);
+        }
+
+        // State
+        const state = {
+            video: null,
+            audio: null,
+            image: null,
+            text: null
+        };
+
+        function switchTab(tab) {
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            event.currentTarget.classList.add('active');
+            document.getElementById(tab + 'Tab').classList.add('active');
+        }
+
+        function showNotification(msg) {
+            const n = document.getElementById('notification');
+            n.textContent = msg;
+            n.classList.add('show');
+            setTimeout(() => n.classList.remove('show'), 3000);
+        }
+
+        // File Handlers
+        function setupUpload(type) {
+            const input = document.getElementById(type + 'Input');
+            const drop = document.getElementById(type + 'Drop');
+            const preview = document.getElementById(type + 'Preview');
+            const element = document.getElementById(type + 'Element');
+
+            input.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) handleFile(file, type);
+            });
+
+            drop.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                drop.classList.add('dragover');
+            });
+
+            drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+
+            drop.addEventListener('drop', (e) => {
+                e.preventDefault();
+                drop.classList.remove('dragover');
+                if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0], type);
+            });
+        }
+
+        function handleFile(file, type) {
+            state[type] = file;
+            const url = URL.createObjectURL(file);
+            const drop = document.getElementById(type + 'Drop');
+            const preview = document.getElementById(type + 'Preview');
+            const element = document.getElementById(type + 'Element');
+
+            if (type === 'video' || type === 'audio') {
+                element.src = url;
+            } else if (type === 'image') {
+                element.src = url;
+            }
+
+            drop.classList.add('hidden');
+            preview.classList.remove('hidden');
+        }
+
+        function resetUpload(type) {
+            state[type] = null;
+            document.getElementById(type + 'Input').value = '';
+            document.getElementById(type + 'Drop').classList.remove('hidden');
+            document.getElementById(type + 'Preview').classList.add('hidden');
+        }
+
+        ['video', 'audio', 'image'].forEach(t => setupUpload(t));
+
+        async function analyze(type) {
+            const loading = document.getElementById('loadingOverlay');
+            const result = document.getElementById('resultOverlay');
+
+            if (type !== 'text' && !state[type]) {
+                showNotification('Please upload a file first!');
+                return;
+            }
+            if (type === 'text' && !document.getElementById('textInput').value.trim()) {
+                showNotification('Please enter some text!');
+                return;
+            }
+
+            loading.classList.add('active');
+
+            try {
+                let formData;
+                let endpoint;
+
+                if (type === 'text') {
+                    formData = new FormData();
+                    formData.append('current_text', document.getElementById('textInput').value); // Match backend Param
+                    endpoint = '/predict_text';
+                } else {
+                    formData = new FormData();
+                    formData.append('file', state[type]);
+                    endpoint = type === 'video' ? '/predict' : `/predict_${type}`;
+                }
+
+                // Add timeout to fetch
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+                const response = await fetch(`http://localhost:8000${endpoint}`, {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) throw new Error('Analysis failed');
+
+                const data = await response.json();
+
+                // Show results
+                document.getElementById('finalBadge').textContent = data.prediction;
+                document.getElementById('finalBadge').className = `prediction-badge ${data.prediction.toLowerCase()}`;
+
+                const confPercent = (data.confidence * 100).toFixed(1) + '%';
+                document.getElementById('finalConfidence').textContent = confPercent;
+
+                let detailsText = '';
+                if (data.prediction === 'FAKE') {
+                    detailsText = `High probability of manipulation detected (${(data.probabilities.fake * 100).toFixed(1)}%). Artifacts found in ${type} stream.`;
+                } else {
+                    detailsText = `Content appears authentic. Low manipulation probability (${(data.probabilities.fake * 100).toFixed(1)}%).`;
+                }
+
+                if (data.frames_processed) {
+                    detailsText += ` | Info: ${data.frames_processed}`;
+                }
+
+                document.getElementById('resultDetails').textContent = detailsText;
+
+                loading.classList.remove('active');
+                result.classList.add('active');
+
+            } catch (error) {
+                loading.classList.remove('active');
+                showNotification('Server Error: Is the backend running?');
+                console.error(error);
+            }
+        }
+
+        function closeResult() {
+            document.getElementById('resultOverlay').classList.remove('active');
+        }
+    </script>
+</body>
+
+</html>

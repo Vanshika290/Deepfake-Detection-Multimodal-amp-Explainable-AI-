@@ -1,0 +1,36 @@
+Attempting to load dataset...
+Dataset loaded successfully
+IterableDatasetDict({
+    train: IterableDataset({
+        features: ['image', 'cam_image', 'cam_overlay', 'comparison_image', 'label', 'confidence_score', 'original_caption', 'cam_caption', 'query', 'technical_explanation', 'non_technical_explanation'],
+        num_shards: 1
+    })
+    test: IterableDataset({
+        features: ['image', 'cam_image', 'cam_overlay', 'comparison_image', 'label', 'confidence_score', 'original_caption', 'cam_caption', 'query', 'technical_explanation', 'non_technical_explanation'],
+        num_shards: 1
+    })
+})
+
+First example in train split:
+Key: image, Type: <class 'PIL.PngImagePlugin.PngImageFile'>
+Size: (256, 256)
+Key: cam_image, Type: <class 'PIL.PngImagePlugin.PngImageFile'>
+Size: (256, 256)
+Key: cam_overlay, Type: <class 'PIL.PngImagePlugin.PngImageFile'>
+Size: (256, 256)
+Key: comparison_image, Type: <class 'PIL.PngImagePlugin.PngImageFile'>
+Size: (1500, 500)
+Key: label, Type: <class 'int'>
+Value: 0
+Key: confidence_score, Type: <class 'float'>
+Value: 0.9100000262260437
+Key: original_caption, Type: <class 'str'>
+Value: there is a man sitting on a couch wearing a suit and tie
+Key: cam_caption, Type: <class 'str'>
+Value: High activation concentrated around both eye regions and on the right side of the mouth, forming three distinct hotspots. Moderate activation extends across the forehead, upper cheeks, and chin area with variable intensity. Low activation present in nasal bridge, left cheek, and peripheral face boundaries. Activation pattern displays partial asymmetry with stronger response on the right side and a vertical gradient diminishing from central to peripheral regions.
+Key: query, Type: <class 'str'>
+Value: How do detection systems handle different types of image features?
+Key: technical_explanation, Type: <class 'str'>
+Value: Detection systems must handle various image features: 1) Different features reveal different types of manipulation; 2) Feature extraction must account for natural variations; 3) The system must balance feature importance; 4) Different features require different analysis approaches; 5) Feature interactions affect detection accuracy; 6) The system needs to understand feature relationships; 7) This false positive case demonstrates how feature analysis might contribute to detection errors.
+Key: non_technical_explanation, Type: <class 'str'>
+Value: Detection systems need to handle different types of image features: - Different features reveal different types of manipulation - Feature extraction must account for natural variations - The system must balance feature importance - Different features require different analysis approaches - Feature interactions affect detection accuracy - The system needs to understand feature relationships. This false positive case shows how feature analysis might contribute to detection errors.

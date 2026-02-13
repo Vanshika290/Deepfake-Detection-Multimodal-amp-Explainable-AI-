@@ -1,0 +1,127 @@
+Cleaning up unnecessary files...
+Skipping __pycache__: [WinError 5] Access is denied: '.\\__pycache__'
+
+Starting video training...
+Using device: cpu
+Training configuration:
+  Batch size: 8
+  Epochs: 10
+  Learning rate: 0.0001
+  Frames per video: 10
+
+Loading video dataset...
+Total videos loaded: 106
+Fake videos: 53, Real videos: 53
+Train videos: 84, Validation videos: 22
+
+Building model...
+Starting training...
+============================================================
+
+Epoch 1/10
+------------------------------------------------------------
+  Batch 5/11 | Loss: 0.6990 | Acc: 50.00%
+  Batch 10/11 | Loss: 0.7009 | Acc: 50.00%
+
+Epoch 1 Summary:
+  Train Accuracy: 48.81%
+  Val Loss: 0.6973 | Val Accuracy: 50.00%
+  Saved checkpoint: video_model_epoch_1.pth
+  ⭐ New best model! Val Accuracy: 50.00%
+
+Epoch 2/10
+------------------------------------------------------------
+  Batch 5/11 | Loss: 0.6901 | Acc: 47.50%
+  Batch 10/11 | Loss: 0.6860 | Acc: 51.25%
+
+Epoch 2 Summary:
+  Train Accuracy: 52.38%
+  Val Loss: 0.7053 | Val Accuracy: 50.00%
+  Saved checkpoint: video_model_epoch_2.pth
+
+Epoch 3/10
+------------------------------------------------------------
+  Batch 5/11 | Loss: 0.6800 | Acc: 62.50%
+  Batch 10/11 | Loss: 0.6940 | Acc: 53.75%
+
+Epoch 3 Summary:
+  Train Accuracy: 54.76%
+  Val Loss: 0.7161 | Val Accuracy: 31.82%
+  Saved checkpoint: video_model_epoch_3.pth
+
+Epoch 4/10
+------------------------------------------------------------
+  Batch 5/11 | Loss: 0.6794 | Acc: 62.50%
+  Batch 10/11 | Loss: 0.6694 | Acc: 65.00%
+
+Epoch 4 Summary:
+  Train Accuracy: 65.48%
+  Val Loss: 0.7384 | Val Accuracy: 27.27%
+  Saved checkpoint: video_model_epoch_4.pth
+
+Epoch 5/10
+------------------------------------------------------------
+  Batch 5/11 | Loss: 0.6593 | Acc: 70.00%
+  Batch 10/11 | Loss: 0.6746 | Acc: 62.50%
+
+Epoch 5 Summary:
+  Train Accuracy: 63.10%
+  Val Loss: 0.7593 | Val Accuracy: 27.27%
+  Saved checkpoint: video_model_epoch_5.pth
+
+Epoch 6/10
+------------------------------------------------------------
+  Batch 5/11 | Loss: 0.6394 | Acc: 77.50%
+  Batch 10/11 | Loss: 0.6681 | Acc: 67.50%
+
+Epoch 6 Summary:
+  Train Accuracy: 69.05%
+  Val Loss: 0.7852 | Val Accuracy: 27.27%
+  Saved checkpoint: video_model_epoch_6.pth
+
+Epoch 7/10
+------------------------------------------------------------
+  Batch 5/11 | Loss: 0.6233 | Acc: 80.00%
+  Batch 10/11 | Loss: 0.6493 | Acc: 73.75%
+
+Epoch 7 Summary:
+  Train Accuracy: 73.81%
+  Val Loss: 0.8366 | Val Accuracy: 27.27%
+  Saved checkpoint: video_model_epoch_7.pth
+
+Epoch 8/10
+------------------------------------------------------------
+  Batch 5/11 | Loss: 0.6084 | Acc: 70.00%
+  Batch 10/11 | Loss: 0.5867 | Acc: 75.00%
+
+Epoch 8 Summary:
+  Train Accuracy: 76.19%
+  Val Loss: 0.8629 | Val Accuracy: 27.27%
+  Saved checkpoint: video_model_epoch_8.pth
+
+Epoch 9/10
+------------------------------------------------------------
+  Batch 5/11 | Loss: 0.5792 | Acc: 75.00%
+  Batch 10/11 | Loss: 0.5534 | Acc: 77.50%
+
+Epoch 9 Summary:
+  Train Accuracy: 78.57%
+  Val Loss: 0.8918 | Val Accuracy: 27.27%
+  Saved checkpoint: video_model_epoch_9.pth
+
+Epoch 10/10
+------------------------------------------------------------
+  Batch 5/11 | Loss: 0.5477 | Acc: 80.00%
+  Batch 10/11 | Loss: 0.5273 | Acc: 82.50%
+
+Epoch 10 Summary:
+  Train Accuracy: 82.14%
+  Val Loss: 0.9216 | Val Accuracy: 22.73%
+  Saved checkpoint: video_model_epoch_10.pth
+
+============================================================
+Training completed in 1818.26s (30.30 minutes)
+Best validation accuracy: 50.00%
+Final model saved to video_model_final.pth
+
+Training completed successfully!
