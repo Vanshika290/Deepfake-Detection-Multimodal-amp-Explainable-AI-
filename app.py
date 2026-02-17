@@ -22,7 +22,38 @@ from torchvision import models
 import torch.nn as nn
 
 
+
 from contextlib import asynccontextmanager
+
+# Global variables for model and transform
+model = None
+transform = None
+
+def load_model():
+    """Load the video model on startup"""
+    global model, transform
+    
+    model_path = "video_model_best.pth"
+    if not os.path.exists(model_path):
+        model_path = "video_model_final.pth"
+    
+    if os.path.exists(model_path):
+        print(f"Loading model from {model_path}...")
+        model = DeepfakeDetector(num_frames=FRAMES_PER_VIDEO).to(DEVICE)
+        
+        checkpoint = torch.load(model_path, map_location=DEVICE)
+        if 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+            print(f"Loaded checkpoint from epoch {checkpoint.get('epoch', 'unknown')}")
+        else:
+            model.load_state_dict(checkpoint)
+        
+        model.eval()
+        transform = get_transforms()
+        print("Model loaded successfully!")
+    else:
+        print(f"Warning: Model file not found at {model_path}")
+        print("Video predictions will not work until model is available.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,7 +73,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+@app.get("/")
+async def root():
+    return {"status": "online", "message": "Deepfake Detection API is running"}
 
 def extract_frames_from_video(video_path, num_frames=10):
     """Extract frames from video for inference"""
@@ -252,4 +285,5 @@ async def predict_text(current_text: str = Form(...)):
     })
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("Starting TruthLens API on http://127.0.0.1:8000")
+    uvicorn.run(app, host="127.0.0.1", port=8000)
