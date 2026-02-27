@@ -16,9 +16,39 @@ IMAGE_SIZE = 224
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATA_ROOT = os.path.join("dataset", "images")  # expects images/real and images/fake
 
+def face_crop(image):
+    """Detect and crop face from PIL image using mediapipe"""
+    try:
+        import mediapipe as mp
+        import numpy as np
+        import cv2
+        from PIL import Image
+        
+        img_np = np.array(image.convert('RGB'))
+        mp_face_detection = mp.solutions.face_detection
+        with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5) as face_detection:
+            results = face_detection.process(img_np)
+            if results.detections:
+                bbox = results.detections[0].location_data.relative_bounding_box
+                h, w, _ = img_np.shape
+                x, y = int(bbox.xmin * w), int(bbox.ymin * h)
+                box_w, box_h = int(bbox.width * w), int(bbox.height * h)
+                
+                padding = int(max(box_w, box_h) * 0.2)
+                x1, y1 = max(0, x - padding), max(0, y - padding)
+                x2, y2 = min(w, x + box_w + padding), min(h, y + box_h + padding)
+                
+                if x2 > x1 and y2 > y1:
+                    crop = img_np[y1:y2, x1:x2]
+                    return Image.fromarray(crop)
+    except Exception:
+        pass
+    return image
+
 def get_transforms(train=True):
     if train:
         return transforms.Compose([
+            transforms.Lambda(face_crop),
             transforms.RandomResizedCrop(IMAGE_SIZE),
             transforms.RandomHorizontalFlip(),
             transforms.ColorJitter(0.2,0.2,0.2,0.05),
@@ -27,6 +57,7 @@ def get_transforms(train=True):
         ])
     else:
         return transforms.Compose([
+            transforms.Lambda(face_crop),
             transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
             transforms.ToTensor(),
             transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
@@ -34,17 +65,22 @@ def get_transforms(train=True):
 
 def build_model(num_classes=2, freeze_backbone=True):
     try:
-        from torchvision.models import ResNet18_Weights
-        weights = ResNet18_Weights.DEFAULT
-        model = models.resnet18(weights=weights)
+        # EfficientNet-V2-S is one of the best models for image classification
+        from torchvision.models import EfficientNet_V2_S_Weights
+        weights = EfficientNet_V2_S_Weights.DEFAULT
+        model = models.efficientnet_v2_s(weights=weights)
     except Exception:
-        model = models.resnet18(pretrained=True)
+        model = models.efficientnet_v2_s(pretrained=True)
 
     if freeze_backbone:
         for param in model.parameters():
             param.requires_grad = False
 
-    model.fc = nn.Linear(model.fc.in_features, num_classes)
+    # Replace the classification head
+    # EfficientNetV2 classifier structure is Sequential(Dropout, Linear)
+    in_features = model.classifier[1].in_features
+    model.classifier[1] = nn.Linear(in_features, num_classes)
+    
     return model.to(DEVICE)
 
 def load_datasets(root=DATA_ROOT, val_fraction=0.2):

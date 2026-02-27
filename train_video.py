@@ -32,7 +32,7 @@ class VideoFrameDataset(Dataset):
         return len(self.video_paths)
     
     def extract_frames(self, video_path):
-        """Extract evenly spaced frames from a video"""
+        """Extract evenly spaced frames from a video, cropping to the face if detected"""
         frames = []
         cap = cv2.VideoCapture(video_path)
         
@@ -41,12 +41,19 @@ class VideoFrameDataset(Dataset):
             return None
         
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
         if total_frames == 0:
             cap.release()
             return None
         
-        # Calculate frame indices to extract (evenly spaced)
+        # Initialize face detector if possible
+        face_detector = None
+        try:
+            import mediapipe as mp
+            mp_face_detection = mp.solutions.face_detection
+            face_detector = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
+        except Exception:
+            pass
+
         frame_indices = np.linspace(0, total_frames - 1, self.frames_per_video, dtype=int)
         
         for idx in frame_indices:
@@ -54,21 +61,40 @@ class VideoFrameDataset(Dataset):
             ret, frame = cap.read()
             
             if ret:
-                # Convert BGR to RGB
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frames.append(frame)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Face Detection & Cropping
+                if face_detector:
+                    results = face_detector.process(frame_rgb)
+                    if results.detections:
+                        # Take the first face detected
+                        bbox = results.detections[0].location_data.relative_bounding_box
+                        h, w, _ = frame.shape
+                        x, y = int(bbox.xmin * w), int(bbox.ymin * h)
+                        box_w, box_h = int(bbox.width * w), int(bbox.height * h)
+                        
+                        # Add some padding to the crop
+                        padding = int(max(box_w, box_h) * 0.2)
+                        x1 = max(0, x - padding)
+                        y1 = max(0, y - padding)
+                        x2 = min(w, x + box_w + padding)
+                        y2 = min(h, y + box_h + padding)
+                        
+                        if x2 > x1 and y2 > y1:
+                            frame_rgb = frame_rgb[y1:y2, x1:x2]
+                
+                # Resize to standard size anyway (crop might be different)
+                frame_rgb = cv2.resize(frame_rgb, (224, 224))
+                frames.append(frame_rgb)
             else:
-                # If frame extraction fails, use a black frame
                 frames.append(np.zeros((224, 224, 3), dtype=np.uint8))
         
         cap.release()
-        
-        # If we didn't get enough frames, pad with the last frame
+        if face_detector:
+            face_detector.close()
+            
         while len(frames) < self.frames_per_video:
-            if frames:
-                frames.append(frames[-1])
-            else:
-                frames.append(np.zeros((224, 224, 3), dtype=np.uint8))
+            frames.append(frames[-1] if frames else np.zeros((224, 224, 3), dtype=np.uint8))
         
         return frames[:self.frames_per_video]
     
@@ -125,23 +151,24 @@ class DeepfakeDetector(nn.Module):
     def __init__(self, num_frames=10):
         super(DeepfakeDetector, self).__init__()
         
-        # Load pretrained ResNet18
+        # Load pretrained EfficientNet-B1 (Gold standard for efficiency/accuracy)
         try:
-            from torchvision.models import ResNet18_Weights
-            weights = ResNet18_Weights.DEFAULT
-            self.feature_extractor = models.resnet18(weights=weights)
+            from torchvision.models import EfficientNet_B1_Weights
+            weights = EfficientNet_B1_Weights.DEFAULT
+            base_model = models.efficientnet_b1(weights=weights)
         except ImportError:
-            self.feature_extractor = models.resnet18(pretrained=True)
+            base_model = models.efficientnet_b1(pretrained=True)
         
-        # Remove the final classification layer
-        self.feature_extractor = nn.Sequential(*list(self.feature_extractor.children())[:-1])
+        # Extract features
+        self.feature_extractor = base_model.features
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
         
         # Freeze early layers for faster training
-        for param in list(self.feature_extractor.parameters())[:-20]:
+        for param in list(self.feature_extractor.parameters())[:-30]:
             param.requires_grad = False
         
-        # LSTM to process temporal information
-        self.lstm = nn.LSTM(input_size=512, hidden_size=256, num_layers=2, 
+        # LSTM to process temporal information (EfficientNet-B1 feature size is 1280)
+        self.lstm = nn.LSTM(input_size=1280, hidden_size=256, num_layers=2, 
                            batch_first=True, dropout=0.3)
         
         # Classification head
@@ -160,8 +187,9 @@ class DeepfakeDetector(nn.Module):
         x = x.view(batch_size * num_frames, c, h, w)
         
         # Extract features from each frame
-        features = self.feature_extractor(x)  # (batch*frames, 512, 1, 1)
-        features = features.view(batch_size, num_frames, -1)  # (batch, frames, 512)
+        features = self.feature_extractor(x)  # (batch*frames, 1280, 7, 7)
+        features = self.avgpool(features)     # (batch*frames, 1280, 1, 1)
+        features = features.view(batch_size, num_frames, -1)  # (batch, frames, 1280)
         
         # Process temporal sequence with LSTM
         lstm_out, _ = self.lstm(features)  # (batch, frames, 256)

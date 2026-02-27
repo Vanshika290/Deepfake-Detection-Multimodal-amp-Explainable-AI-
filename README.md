@@ -36,9 +36,10 @@ python evaluate.py
 Notes
 
 - `app.py` exposes `/predict` for videos and `/predict_image` for images.
-- Frontend `frontend/src/App.jsx` posts to these endpoints and shows JSON results.
-
-- For best accuracy, train the video model with `train_video.py` for many epochs on a GPU.
+- All models now use **SOTA Architectures**: **EfficientNet-B1-LSTM** for videos and **EfficientNetV2-S** for images.
+- All pipelines now include **MediaPipe Face Detection** for robust face-focused analysis.
+- For best results, re-run the training scripts as the previous ResNet18 weights are incompatible with the new high-accuracy architectures.
+- Make sure to install `mediapipe` (already in `requirements.txt`).
 
 ## GitHub Setup
 

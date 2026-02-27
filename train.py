@@ -29,19 +29,21 @@ def train_full():
     
     img_transforms = get_transforms()
     
-    print("Building model...", flush=True)
+    print("Building model (EfficientNetV2-S)...", flush=True)
     try:
-        from torchvision.models import ResNet18_Weights
-        weights = ResNet18_Weights.DEFAULT
-        model = models.resnet18(weights=weights)
-    except ImportError:
-        model = models.resnet18(pretrained=True)
+        from torchvision.models import EfficientNet_V2_S_Weights
+        weights = EfficientNet_V2_S_Weights.DEFAULT
+        model = models.efficientnet_v2_s(weights=weights)
+    except Exception:
+        model = models.efficientnet_v2_s(pretrained=True)
         
-    model.fc = nn.Linear(model.fc.in_features, 2)
+    in_features = model.classifier[1].in_features
+    model.classifier[1] = nn.Linear(in_features, 2)
     model = model.to(DEVICE)
     
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=1)
     
     # Setup mixed precision only for CUDA
     use_cuda = torch.cuda.is_available()
@@ -73,11 +75,33 @@ def train_full():
                     img = item['image']
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
+                    
+                    # We also add face detection here for better training data
+                    try:
+                        import mediapipe as mp
+                        import numpy as np
+                        from PIL import Image
+                        img_np = np.array(img)
+                        mp_face_detection = mp.solutions.face_detection
+                        with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5) as face_detection:
+                            results = face_detection.process(img_np)
+                            if results.detections:
+                                bbox = results.detections[0].location_data.relative_bounding_box
+                                h, w, _ = img_np.shape
+                                x, y = int(bbox.xmin * w), int(bbox.ymin * h)
+                                box_w, box_h = int(bbox.width * w), int(bbox.height * h)
+                                padding = int(max(box_w, box_h) * 0.2)
+                                x1, y1 = max(0, x - padding), max(0, y - padding)
+                                x2, y2 = min(w, x + box_w + padding), min(h, y + box_h + padding)
+                                if x2 > x1 and y2 > y1:
+                                    img = Image.fromarray(img_np[y1:y2, x1:x2])
+                    except Exception:
+                        pass
+
                     tensor = img_transforms(img)
                     batch_images.append(tensor)
                     batch_labels.append(item['label'])
             except StopIteration:
-                # If we got some items before stopping, process them. Otherwise break.
                 if not batch_images:
                     break
             except Exception as e:
@@ -87,7 +111,6 @@ def train_full():
             if not batch_images:
                 break
                 
-            # Stack
             inputs = torch.stack(batch_images).to(DEVICE)
             labels = torch.tensor(batch_labels).to(DEVICE)
             
@@ -124,12 +147,13 @@ def train_full():
                 correct = 0
                 total = 0
 
-            # Stop manually if dataset is exhausted (StopIteration is caught above)
-            # The inner loop logic handles the "last partial batch" case if StopIteration raised inside loop
-            # But the try/except block above might break early. 
-            # If len(batch_images) < BATCH_SIZE, it means we hit end of dataset.
             if len(batch_images) < BATCH_SIZE:
                  break
+        
+        # Simple validation step could go here, or just step the scheduler on training loss
+        # For simplicity in this script, we'll just step the scheduler
+        current_acc = 100. * correct / total if total > 0 else 0
+        scheduler.step(current_acc)
         
         # Save checkpoint
         checkpoint_name = f"deepfake_model_epoch_{epoch+1}.pth"

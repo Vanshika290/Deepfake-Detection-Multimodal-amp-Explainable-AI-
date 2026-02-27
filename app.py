@@ -41,19 +41,26 @@ def load_model():
         print(f"Loading model from {model_path}...")
         model = DeepfakeDetector(num_frames=FRAMES_PER_VIDEO).to(DEVICE)
         
-        checkpoint = torch.load(model_path, map_location=DEVICE)
-        if 'model_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['model_state_dict'])
-            print(f"Loaded checkpoint from epoch {checkpoint.get('epoch', 'unknown')}")
-        else:
-            model.load_state_dict(checkpoint)
+        try:
+            checkpoint = torch.load(model_path, map_location=DEVICE)
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'])
+                print(f"Loaded checkpoint from epoch {checkpoint.get('epoch', 'unknown')}")
+            else:
+                model.load_state_dict(checkpoint)
+            model.eval()
+            print("Model loaded successfully!")
+        except Exception as e:
+            print(f"\n[ERROR] Could not load weights from {model_path} due to architecture mismatch.")
+            print(f"Details: {e}")
+            print("The API is running, but video predictions will use a random baseline until the new model is trained.")
+            model = DeepfakeDetector(num_frames=FRAMES_PER_VIDEO).to(DEVICE)
+            model.eval()
         
-        model.eval()
         transform = get_transforms()
-        print("Model loaded successfully!")
     else:
         print(f"Warning: Model file not found at {model_path}")
-        print("Video predictions will not work until model is available.")
+        print("API is running, but model-based predictions will not work until a model is available.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -78,7 +85,7 @@ async def root():
     return {"status": "online", "message": "Deepfake Detection API is running"}
 
 def extract_frames_from_video(video_path, num_frames=10):
-    """Extract frames from video for inference"""
+    """Extract frames from video for inference, cropping to faces if detected"""
     frames = []
     cap = cv2.VideoCapture(video_path)
     
@@ -90,19 +97,47 @@ def extract_frames_from_video(video_path, num_frames=10):
         cap.release()
         return None
         
+    # Initialize face detector
+    face_detector = None
+    try:
+        import mediapipe as mp
+        mp_face_detection = mp.solutions.face_detection
+        face_detector = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
+    except Exception:
+        pass
+
     frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
     
     for idx in frame_indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = cap.read()
         if ret:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frames.append(frame)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Crop to face if detected
+            if face_detector:
+                results = face_detector.process(frame_rgb)
+                if results.detections:
+                    bbox = results.detections[0].location_data.relative_bounding_box
+                    h, w, _ = frame.shape
+                    x, y = int(bbox.xmin * w), int(bbox.ymin * h)
+                    box_w, box_h = int(bbox.width * w), int(bbox.height * h)
+                    
+                    padding = int(max(box_w, box_h) * 0.2)
+                    x1 = max(0, x - padding); y1 = max(0, y - padding)
+                    x2 = min(w, x + box_w + padding); y2 = min(h, y + box_h + padding)
+                    
+                    if x2 > x1 and y2 > y1:
+                        frame_rgb = frame_rgb[y1:y2, x1:x2]
+            
+            # Resize
+            frame_rgb = cv2.resize(frame_rgb, (224, 224))
+            frames.append(frame_rgb)
         else:
-            # Fallback for failed frame read
             frames.append(np.zeros((224, 224, 3), dtype=np.uint8))
             
     cap.release()
+    if face_detector: face_detector.close()
     
     # Pad if necessary
     while len(frames) < num_frames:
@@ -118,13 +153,24 @@ async def predict_image(file: UploadFile = File(...)):
 
     # Lazy-load an image classification model separate from the video model
     try:
-        # Build image model (ResNet18)
-        image_model = models.resnet18(pretrained=False)
-        image_model.fc = nn.Linear(image_model.fc.in_features, 2)
+        # Build image model (EfficientNetV2-S for state-of-the-art accuracy)
+        try:
+            from torchvision.models import EfficientNet_V2_S_Weights
+            weights = EfficientNet_V2_S_Weights.DEFAULT
+            image_model = models.efficientnet_v2_s(weights=weights)
+        except Exception:
+            image_model = models.efficientnet_v2_s(pretrained=True)
+            
+        # Replace the classification head to match 2 classes (Real/Fake)
+        in_features = image_model.classifier[1].in_features
+        image_model.classifier[1] = nn.Linear(in_features, 2)
         image_model = image_model.to(DEVICE)
 
         # Try loading weights if available
-        image_model_path = "deepfake_model_final.pth"
+        image_model_path = "deepfake_model_best.pth"
+        if not os.path.exists(image_model_path):
+            image_model_path = "deepfake_model_final.pth"
+            
         if os.path.exists(image_model_path):
             try:
                 ck = torch.load(image_model_path, map_location=DEVICE)
@@ -133,6 +179,7 @@ async def predict_image(file: UploadFile = File(...)):
                     image_model.load_state_dict(ck['model_state_dict'])
                 else:
                     image_model.load_state_dict(ck)
+                print(f"Loaded image model weights from {image_model_path}")
             except Exception as e:
                 print(f"Warning: could not load image model weights: {e}")
 
@@ -147,7 +194,30 @@ async def predict_image(file: UploadFile = File(...)):
         # Read file bytes
         content = await file.read()
         img = Image.open(io.BytesIO(content)).convert('RGB')
+        
+        # Face Detection for Image Prediction
         img_np = np.array(img)
+        try:
+            import mediapipe as mp
+            mp_face_detection = mp.solutions.face_detection
+            with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5) as face_detection:
+                results = face_detection.process(img_np)
+                if results.detections:
+                    bbox = results.detections[0].location_data.relative_bounding_box
+                    h, w, _ = img_np.shape
+                    x, y = int(bbox.xmin * w), int(bbox.ymin * h)
+                    box_w, box_h = int(bbox.width * w), int(bbox.height * h)
+                    
+                    padding = int(max(box_w, box_h) * 0.2)
+                    x1, y1 = max(0, x - padding), max(0, y - padding)
+                    x2, y2 = min(w, x + box_w + padding), min(h, y + box_h + padding)
+                    
+                    if x2 > x1 and y2 > y1:
+                        img_np = img_np[y1:y2, x1:x2]
+        except Exception as e:
+            print(f"Face detection info: {e}")
+
+        # Final transform (Resize and Normalize)
         tensor = image_transform(img_np).unsqueeze(0).to(DEVICE)
 
         with torch.no_grad():

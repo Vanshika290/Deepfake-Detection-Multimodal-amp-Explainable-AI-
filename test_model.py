@@ -15,18 +15,25 @@ CLASSES = ['Fake', 'Real'] # 0: Fake, 1: Real (Standard labeled datasets usually
 def load_model(model_path):
     print(f"Loading model from {model_path}...")
     try:
-        from torchvision.models import ResNet18_Weights
-        weights = ResNet18_Weights.DEFAULT
-        model = models.resnet18(weights=weights)
-    except ImportError:
-        model = models.resnet18(pretrained=True)
+        # Using EfficientNetV2-S to match training architecture
+        from torchvision.models import EfficientNet_V2_S_Weights
+        weights = EfficientNet_V2_S_Weights.DEFAULT
+        model = models.efficientnet_v2_s(weights=weights)
+    except Exception:
+        model = models.efficientnet_v2_s(pretrained=True)
         
-    # Modify final layer to match training
-    model.fc = nn.Linear(model.fc.in_features, 2)
+    # Modify final layer to match training (EfficientNetV2 has model.classifier[1])
+    in_features = model.classifier[1].in_features
+    model.classifier[1] = nn.Linear(in_features, 2)
     
     # Load weights
     if os.path.exists(model_path):
-        model.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        checkpoint = torch.load(model_path, map_location=DEVICE)
+        # Handle both states dict and wrapped checkpoints
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            model.load_state_dict(checkpoint)
         print("Model weights loaded successfully.")
     else:
         print(f"Error: Model file '{model_path}' not found.")
@@ -84,20 +91,22 @@ if __name__ == "__main__":
     import glob
     
     # Auto-detect latest model
-    model_files = glob.glob("deepfake_model_*.pth")
+    model_files = glob.glob("deepfake_model_*.pth") + glob.glob("deepfake_image_*.pth")
     if not model_files:
         print("No model files found!")
         sys.exit(1)
         
     # Sort to find the best one: Prefer 'final', then highest epoch
-    # Heuristic: 'final' > 'epoch_5' > 'epoch_1' ...
     def sort_key(f):
         if 'final' in f:
             return 9999
+        if 'best' in f:
+            return 9998
         # Extract epoch number
         parts = f.replace('.pth', '').split('_')
-        if len(parts) > 0 and parts[-1].isdigit():
-            return int(parts[-1])
+        for part in reversed(parts):
+            if part.isdigit():
+                return int(part)
         return 0
         
     latest_model_path = sorted(model_files, key=sort_key, reverse=True)[0]

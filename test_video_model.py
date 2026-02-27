@@ -18,18 +18,14 @@ class DeepfakeDetector(nn.Module):
     def __init__(self, num_frames=10):
         super(DeepfakeDetector, self).__init__()
         
-        # Load pretrained ResNet18
-        try:
-            from torchvision.models import ResNet18_Weights
-            weights = ResNet18_Weights.DEFAULT
-            self.feature_extractor = models.resnet18(weights=weights)
-        except ImportError:
-            self.feature_extractor = models.resnet18(pretrained=True)
+        # Using ResNet18 backbone to match your current video_model_best.pth (50MB)
+        # Note: If you want to use EfficientNet-B1, you must run train_video.py first 
+        # and then change this back to models.efficientnet_b1 and input_size=1280
+        base_model = models.resnet18(pretrained=True)
+        self.feature_extractor = nn.Sequential(*list(base_model.children())[:-2])
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
         
-        # Remove the final classification layer
-        self.feature_extractor = nn.Sequential(*list(self.feature_extractor.children())[:-1])
-        
-        # LSTM to process temporal information
+        # ResNet18 outputs 512 features
         self.lstm = nn.LSTM(input_size=512, hidden_size=256, num_layers=2, 
                            batch_first=True, dropout=0.3)
         
@@ -49,7 +45,8 @@ class DeepfakeDetector(nn.Module):
         x = x.view(batch_size * num_frames, c, h, w)
         
         # Extract features from each frame
-        features = self.feature_extractor(x)  # (batch*frames, 512, 1, 1)
+        features = self.feature_extractor(x)  # (batch*frames, 512, 7, 7) for 224x224
+        features = self.avgpool(features)     # (batch*frames, 512, 1, 1)
         features = features.view(batch_size, num_frames, -1)  # (batch, frames, 512)
         
         # Process temporal sequence with LSTM
@@ -73,7 +70,7 @@ def get_transforms():
     ])
 
 def extract_frames(video_path, frames_per_video=10):
-    """Extract evenly spaced frames from a video"""
+    """Extract evenly spaced frames from a video, cropping to the face if detected"""
     frames = []
     cap = cv2.VideoCapture(video_path)
     
@@ -82,11 +79,19 @@ def extract_frames(video_path, frames_per_video=10):
         return None
     
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
     if total_frames == 0:
         cap.release()
         return None
     
+    # Initialize face detector
+    face_detector = None
+    try:
+        import mediapipe as mp
+        mp_face_detection = mp.solutions.face_detection
+        face_detector = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
+    except Exception:
+        pass
+
     # Calculate frame indices to extract (evenly spaced)
     frame_indices = np.linspace(0, total_frames - 1, frames_per_video, dtype=int)
     
@@ -95,21 +100,38 @@ def extract_frames(video_path, frames_per_video=10):
         ret, frame = cap.read()
         
         if ret:
-            # Convert BGR to RGB
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frames.append(frame)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Face Detection
+            if face_detector:
+                results = face_detector.process(frame_rgb)
+                if results.detections:
+                    bbox = results.detections[0].location_data.relative_bounding_box
+                    h, w, _ = frame.shape
+                    x, y = int(bbox.xmin * w), int(bbox.ymin * h)
+                    box_w, box_h = int(bbox.width * w), int(bbox.height * h)
+                    
+                    padding = int(max(box_w, box_h) * 0.2)
+                    x1 = max(0, x - padding)
+                    y1 = max(0, y - padding)
+                    x2 = min(w, x + box_w + padding)
+                    y2 = min(h, y + box_h + padding)
+                    
+                    if x2 > x1 and y2 > y1:
+                        frame_rgb = frame_rgb[y1:y2, x1:x2]
+            
+            # Final Resize
+            frame_rgb = cv2.resize(frame_rgb, (224, 224))
+            frames.append(frame_rgb)
         else:
-            # If frame extraction fails, use a black frame
             frames.append(np.zeros((224, 224, 3), dtype=np.uint8))
     
     cap.release()
+    if face_detector:
+        face_detector.close()
     
-    # If we didn't get enough frames, pad with the last frame
     while len(frames) < frames_per_video:
-        if frames:
-            frames.append(frames[-1])
-        else:
-            frames.append(np.zeros((224, 224, 3), dtype=np.uint8))
+        frames.append(frames[-1] if frames else np.zeros((224, 224, 3), dtype=np.uint8))
     
     return frames[:frames_per_video]
 

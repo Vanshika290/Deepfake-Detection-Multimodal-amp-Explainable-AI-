@@ -3,14 +3,45 @@ import torch
 import numpy as np
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
+from PIL import Image
 from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from train_image import build_model, IMAGE_SIZE, DEVICE
 
 DATA_ROOT = os.path.join('dataset', 'images')
 
+def face_crop(image):
+    """Detect and crop face from image using mediapipe"""
+    try:
+        import mediapipe as mp
+        import numpy as np
+        import cv2
+        
+        # Convert PIL to numpy
+        img_np = np.array(image)
+        mp_face_detection = mp.solutions.face_detection
+        with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5) as face_detection:
+            results = face_detection.process(img_np)
+            if results.detections:
+                bbox = results.detections[0].location_data.relative_bounding_box
+                h, w, _ = img_np.shape
+                x, y = int(bbox.xmin * w), int(bbox.ymin * h)
+                box_w, box_h = int(bbox.width * w), int(bbox.height * h)
+                
+                padding = int(max(box_w, box_h) * 0.2)
+                x1, y1 = max(0, x - padding), max(0, y - padding)
+                x2, y2 = min(w, x + box_w + padding), min(h, y + box_h + padding)
+                
+                if x2 > x1 and y2 > y1:
+                    crop = img_np[y1:y2, x1:x2]
+                    return Image.fromarray(crop)
+    except Exception:
+        pass
+    return image
+
 def get_transform():
     return transforms.Compose([
+        transforms.Lambda(face_crop),
         transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
         transforms.ToTensor(),
         transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
