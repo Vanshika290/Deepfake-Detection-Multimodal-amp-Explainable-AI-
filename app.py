@@ -106,6 +106,7 @@ def extract_frames_from_video(video_path, num_frames=10):
     except Exception:
         pass
 
+    face_bbox = None
     frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
     
     for idx in frame_indices:
@@ -129,6 +130,7 @@ def extract_frames_from_video(video_path, num_frames=10):
                     
                     if x2 > x1 and y2 > y1:
                         frame_rgb = frame_rgb[y1:y2, x1:x2]
+                        face_bbox = {"x": bbox.xmin, "y": bbox.ymin, "w": bbox.width, "h": bbox.height}
             
             # Resize
             frame_rgb = cv2.resize(frame_rgb, (224, 224))
@@ -143,7 +145,7 @@ def extract_frames_from_video(video_path, num_frames=10):
     while len(frames) < num_frames:
         frames.append(frames[-1] if frames else np.zeros((224, 224, 3), dtype=np.uint8))
         
-    return frames[:num_frames]
+    return frames[:num_frames], face_bbox
 
 
 @app.post("/predict_image")
@@ -214,6 +216,7 @@ async def predict_image(file: UploadFile = File(...)):
                     
                     if x2 > x1 and y2 > y1:
                         img_np = img_np[y1:y2, x1:x2]
+                        face_bbox = {"x": bbox.xmin, "y": bbox.ymin, "w": bbox.width, "h": bbox.height}
         except Exception as e:
             print(f"Face detection info: {e}")
 
@@ -231,7 +234,8 @@ async def predict_image(file: UploadFile = File(...)):
             "probabilities": {
                 "fake": float(probs[1].item()),
                 "real": float(probs[0].item())
-            }
+            },
+            "face_bbox": face_bbox if 'face_bbox' in locals() else None
         }
 
         return JSONResponse(content=result)
@@ -256,7 +260,7 @@ async def predict_video(file: UploadFile = File(...)):
         print(f"Processing video: {temp_path}")
         
         # Extract frames
-        frames = extract_frames_from_video(temp_path, FRAMES_PER_VIDEO)
+        frames, face_bbox = extract_frames_from_video(temp_path, FRAMES_PER_VIDEO)
         
         # Clean up temp file
         try:
@@ -288,7 +292,8 @@ async def predict_video(file: UploadFile = File(...)):
                 "fake": float(fake_prob),
                 "real": float(real_prob)
             },
-            "frames_processed": len(frames)
+            "frames_processed": len(frames),
+            "face_bbox": face_bbox
         }
         
         return JSONResponse(content=result)
