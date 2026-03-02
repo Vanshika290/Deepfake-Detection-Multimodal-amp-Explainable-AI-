@@ -29,12 +29,21 @@ class DeepfakeDetector(nn.Module):
         self.lstm = nn.LSTM(input_size=512, hidden_size=256, num_layers=2, 
                            batch_first=True, dropout=0.3)
         
-        # Classification head
+        # Authenticity Classification head (Real vs Fake)
         self.classifier = nn.Sequential(
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(128, 2)
+        )
+
+        # Emotion Classification head (Multi-task tasking)
+        # 7 Emotions: 0:Angry, 1:Disgust, 2:Fear, 3:Happy, 4:Neutral, 5:Sad, 6:Surprise
+        self.emotion_classifier = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 7)
         )
     
     def forward(self, x):
@@ -55,10 +64,11 @@ class DeepfakeDetector(nn.Module):
         # Use the last LSTM output
         last_output = lstm_out[:, -1, :]  # (batch, 256)
         
-        # Classify
-        output = self.classifier(last_output)  # (batch, 2)
+        # Multi-task outputs
+        authen_out = self.classifier(last_output)
+        emotion_out = self.emotion_classifier(last_output)
         
-        return output
+        return authen_out, emotion_out
 
 def get_transforms():
     """Transforms for test (no augmentation)"""
@@ -153,12 +163,21 @@ def predict_video(model, video_path, transform):
     # Predict
     model.eval()
     with torch.no_grad():
-        outputs = model(frames_tensor)
-        probabilities = torch.softmax(outputs, dim=1)
-        predicted_class = outputs.argmax(dim=1).item()
+        authen_out, emotion_out = model(frames_tensor)
+        
+        # Authenticity
+        probabilities = torch.softmax(authen_out, dim=1)
+        predicted_class = authen_out.argmax(dim=1).item()
         confidence = probabilities[0][predicted_class].item()
+
+        # Emotion
+        emotion_probs = torch.softmax(emotion_out, dim=1)
+        emotion_idx = emotion_out.argmax(dim=1).item()
+        emotion_labels = ["Angry", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise"]
+        predicted_emotion = emotion_labels[emotion_idx]
+        emotion_confidence = emotion_probs[0][emotion_idx].item()
     
-    return predicted_class, confidence
+    return predicted_class, confidence, predicted_emotion, emotion_confidence
 
 def test_model(model_path="video_model_best.pth"):
     """Test the trained model on the validation set"""
@@ -201,7 +220,7 @@ def test_model(model_path="video_model_best.pth"):
         fake_correct = 0
         for video_file in fake_videos:
             video_path = os.path.join(fake_dir, video_file)
-            predicted_class, confidence = predict_video(model, video_path, transform)
+            predicted_class, confidence, predicted_emotion, emotion_confidence = predict_video(model, video_path, transform)
             
             if predicted_class is not None:
                 label = "FAKE" if predicted_class == 1 else "REAL"
@@ -209,7 +228,7 @@ def test_model(model_path="video_model_best.pth"):
                 fake_correct += is_correct
                 
                 status = "[OK]" if is_correct else "[FAIL]"
-                print(f"{status} {video_file:20s} | Predicted: {label:4s} | Confidence: {confidence:.2%}")
+                print(f"{status} {video_file:20s} | Pred: {label:4s} | Emotion: {predicted_emotion:8s} | Conf: {confidence:.2%}")
         
         print(f"\nFake videos accuracy: {fake_correct}/{len(fake_videos)} ({100*fake_correct/len(fake_videos):.1f}%)")
     
@@ -222,7 +241,7 @@ def test_model(model_path="video_model_best.pth"):
         real_correct = 0
         for video_file in real_videos:
             video_path = os.path.join(real_dir, video_file)
-            predicted_class, confidence = predict_video(model, video_path, transform)
+            predicted_class, confidence, predicted_emotion, emotion_confidence = predict_video(model, video_path, transform)
             
             if predicted_class is not None:
                 label = "FAKE" if predicted_class == 1 else "REAL"
@@ -230,7 +249,7 @@ def test_model(model_path="video_model_best.pth"):
                 real_correct += is_correct
                 
                 status = "[OK]" if is_correct else "[FAIL]"
-                print(f"{status} {video_file:20s} | Predicted: {label:4s} | Confidence: {confidence:.2%}")
+                print(f"{status} {video_file:20s} | Pred: {label:4s} | Emotion: {predicted_emotion:8s} | Conf: {confidence:.2%}")
         
         print(f"\nReal videos accuracy: {real_correct}/{len(real_videos)} ({100*real_correct/len(real_videos):.1f}%)")
     
@@ -259,12 +278,12 @@ def test_single_video(video_path, model_path="video_model_best.pth"):
     transform = get_transforms()
     
     print(f"\nTesting video: {video_path}")
-    predicted_class, confidence = predict_video(model, video_path, transform)
+    predicted_class, confidence, predicted_emotion, emotion_confidence = predict_video(model, video_path, transform)
     
     if predicted_class is not None:
         label = "FAKE" if predicted_class == 1 else "REAL"
-        print(f"\nPrediction: {label}")
-        print(f"Confidence: {confidence:.2%}")
+        print(f"\nAuthenticity: {label} (Conf: {confidence:.2%})")
+        print(f"Detected Emotion: {predicted_emotion} (Conf: {emotion_confidence:.2%})")
         
         if predicted_class == 1:
             print("[WARN]  This video appears to be a DEEPFAKE")

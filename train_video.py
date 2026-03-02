@@ -22,9 +22,10 @@ VIDEO_ROOT = r"c:\Users\Vanshina Saxena\OneDrive\Desktop\Deepfake Detection\data
 class VideoFrameDataset(Dataset):
     """Dataset that extracts frames from videos"""
     
-    def __init__(self, video_paths, labels, transform=None, frames_per_video=10):
+    def __init__(self, video_paths, auth_labels, emotion_labels, transform=None, frames_per_video=10):
         self.video_paths = video_paths
-        self.labels = labels
+        self.auth_labels = auth_labels
+        self.emotion_labels = emotion_labels
         self.transform = transform
         self.frames_per_video = frames_per_video
         
@@ -100,7 +101,8 @@ class VideoFrameDataset(Dataset):
     
     def __getitem__(self, idx):
         video_path = self.video_paths[idx]
-        label = self.labels[idx]
+        auth_label = self.auth_labels[idx]
+        emotion_label = self.emotion_labels[idx]
         
         try:
             # Extract frames
@@ -123,7 +125,7 @@ class VideoFrameDataset(Dataset):
             dummy_frame = torch.zeros((3, 224, 224))
             frames_tensor = torch.stack([dummy_frame for _ in range(self.frames_per_video)])
         
-        return frames_tensor, label
+        return frames_tensor, auth_label, emotion_label
 
 def get_transforms():
     """Data augmentation and normalization"""
@@ -171,12 +173,21 @@ class DeepfakeDetector(nn.Module):
         self.lstm = nn.LSTM(input_size=1280, hidden_size=256, num_layers=2, 
                            batch_first=True, dropout=0.3)
         
-        # Classification head
+        # Authenticity Classification head (Real vs Fake)
         self.classifier = nn.Sequential(
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(128, 2)
+        )
+
+        # Emotion Classification head (Multi-task tasking)
+        # 0:Angry, 1:Disgust, 2:Fear, 3:Happy, 4:Neutral, 5:Sad, 6:Surprise
+        self.emotion_classifier = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 7)
         )
     
     def forward(self, x):
@@ -197,48 +208,85 @@ class DeepfakeDetector(nn.Module):
         # Use the last LSTM output
         last_output = lstm_out[:, -1, :]  # (batch, 256)
         
-        # Classify
-        output = self.classifier(last_output)  # (batch, 2)
+        # Multi-task outputs
+        authen_out = self.classifier(last_output)
+        emotion_out = self.emotion_classifier(last_output)
         
-        return output
+        return authen_out, emotion_out
+
+def parse_emotion_from_filename(filename):
+    """Automatically parse emotion label from filename based on keywords"""
+    filename = filename.lower()
+    emotions = {
+        "angry": 0, "anger": 0,
+        "disgust": 1,
+        "fear": 2, "afraid": 2,
+        "happy": 3, "joy": 3, "smile": 3,
+        "neutral": 4, "calm": 4,
+        "sad": 5, "sorrow": 5,
+        "surprise": 6, "shock": 6
+    }
+    
+    for key, val in emotions.items():
+        if key in filename:
+            return val
+    return 4  # Default to Neutral if no keyword found
 
 def load_video_dataset():
-    """Load video paths and labels"""
+    """Load video paths, authenticity labels, and emotion labels"""
     fake_dir = os.path.join(VIDEO_ROOT, 'videos_fake')
     real_dir = os.path.join(VIDEO_ROOT, 'videos_real')
     
     video_paths = []
-    labels = []
+    auth_labels = []
+    emotion_labels = []
     
     # Load fake videos (label = 1)
     if os.path.exists(fake_dir):
         for video_file in os.listdir(fake_dir):
             if video_file.endswith('.mp4'):
-                video_paths.append(os.path.join(fake_dir, video_file))
-                labels.append(1)  # Fake
+                v_path = os.path.join(fake_dir, video_file)
+                video_paths.append(v_path)
+                auth_labels.append(1)  # Fake
+                emotion_labels.append(parse_emotion_from_filename(video_file))
     
     # Load real videos (label = 0)
     if os.path.exists(real_dir):
         for video_file in os.listdir(real_dir):
             if video_file.endswith('.mp4'):
-                video_paths.append(os.path.join(real_dir, video_file))
-                labels.append(0)  # Real
+                v_path = os.path.join(real_dir, video_file)
+                video_paths.append(v_path)
+                auth_labels.append(0)  # Real
+                emotion_labels.append(parse_emotion_from_filename(video_file))
     
     print(f"Total videos loaded: {len(video_paths)}")
-    print(f"Fake videos: {sum(labels)}, Real videos: {len(labels) - sum(labels)}")
+    print(f"Fake: {sum(auth_labels)}, Real: {len(auth_labels) - sum(auth_labels)}")
     
-    return video_paths, labels
+    # Show emotion distribution
+    from collections import Counter
+    emo_counts = Counter(emotion_labels)
+    emo_names = ["Angry", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise"]
+    print("Emotion distribution:")
+    for i, name in enumerate(emo_names):
+        print(f"  {name}: {emo_counts.get(i, 0)}")
+    
+    return video_paths, auth_labels, emotion_labels
 
 def train_epoch(model, dataloader, criterion, optimizer, device, scaler=None):
-    """Train for one epoch"""
+    """Train for one epoch with Multi-Task Loss"""
     model.train()
     running_loss = 0.0
-    correct = 0
+    correct_auth = 0
+    correct_emo = 0
     total = 0
     
-    for batch_idx, (frames, labels) in enumerate(dataloader):
+    # Emotion labels mapping (if provided by dataset)
+    # If dataset doesn't provide them, we'll skip emotion loss backprop
+    
+    for batch_idx, (frames, auth_y, emo_y) in enumerate(dataloader):
         frames = frames.to(device)
-        labels = labels.to(device)
+        auth_y = auth_y.to(device)
+        emo_y = emo_y.to(device)
         
         optimizer.zero_grad()
         
@@ -246,57 +294,71 @@ def train_epoch(model, dataloader, criterion, optimizer, device, scaler=None):
         
         if use_cuda and scaler:
             with torch.amp.autocast('cuda'):
-                outputs = model(frames)
-                loss = criterion(outputs, labels)
+                auth_out, emo_out = model(frames)
+                loss_auth = criterion(auth_out, auth_y)
+                loss_emo = criterion(emo_out, emo_y)
+                loss = loss_auth + 0.5 * loss_emo # Combine losses
             
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
         else:
-            outputs = model(frames)
-            loss = criterion(outputs, labels)
+            auth_out, emo_out = model(frames)
+            loss_auth = criterion(auth_out, auth_y)
+            loss_emo = criterion(emo_out, emo_y)
+            loss = loss_auth + 0.5 * loss_emo
             loss.backward()
             optimizer.step()
         
         # Statistics
         running_loss += loss.item()
-        _, predicted = outputs.max(1)
-        total += labels.size(0)
-        correct += predicted.eq(labels).sum().item()
+        _, pred_auth = auth_out.max(1)
+        _, pred_emo = emo_out.max(1)
+        total += auth_y.size(0)
+        correct_auth += pred_auth.eq(auth_y).sum().item()
+        correct_emo += pred_emo.eq(emo_y).sum().item()
         
         if (batch_idx + 1) % 5 == 0:
             avg_loss = running_loss / 5
-            acc = 100. * correct / total
-            print(f"  Batch {batch_idx + 1}/{len(dataloader)} | Loss: {avg_loss:.4f} | Acc: {acc:.2f}%", flush=True)
+            acc_auth = 100. * correct_auth / total
+            acc_emo = 100. * correct_emo / total
+            print(f"  Batch {batch_idx + 1}/{len(dataloader)} | Loss: {avg_loss:.4f} | Auth: {acc_auth:.1f}% | Emo: {acc_emo:.1f}%", flush=True)
             running_loss = 0.0
     
-    epoch_acc = 100. * correct / total
+    epoch_acc = 100. * correct_auth / total
     return epoch_acc
 
 def validate(model, dataloader, criterion, device):
-    """Validate the model"""
+    """Validate model on Multi-Task Performance"""
     model.eval()
     running_loss = 0.0
-    correct = 0
+    correct_auth = 0
+    correct_emo = 0
     total = 0
     
     with torch.no_grad():
-        for frames, labels in dataloader:
+        for frames, auth_y, emo_y in dataloader:
             frames = frames.to(device)
-            labels = labels.to(device)
+            auth_y = auth_y.to(device)
+            emo_y = emo_y.to(device)
             
-            outputs = model(frames)
-            loss = criterion(outputs, labels)
+            auth_out, emo_out = model(frames)
+            loss_auth = criterion(auth_out, auth_y)
+            loss_emo = criterion(emo_out, emo_y)
+            loss = loss_auth + 0.5 * loss_emo
             
             running_loss += loss.item()
-            _, predicted = outputs.max(1)
-            total += labels.size(0)
-            correct += predicted.eq(labels).sum().item()
+            _, pred_auth = auth_out.max(1)
+            _, pred_emo = emo_out.max(1)
+            total += auth_y.size(0)
+            correct_auth += pred_auth.eq(auth_y).sum().item()
+            correct_emo += pred_emo.eq(emo_y).sum().item()
     
     avg_loss = running_loss / len(dataloader)
-    accuracy = 100. * correct / total
+    acc_auth = 100. * correct_auth / total
+    acc_emo = 100. * correct_emo / total
     
-    return avg_loss, accuracy
+    return avg_loss, acc_auth, acc_emo
 
 def main():
     print(f"Using device: {DEVICE}")
@@ -308,26 +370,26 @@ def main():
     print()
     
     # Load dataset
-    print("Loading video dataset...")
-    video_paths, labels = load_video_dataset()
+    print("Loading video dataset with Multi-Task analysis...")
+    video_paths, auth_labels, emotion_labels = load_video_dataset()
     
     if len(video_paths) == 0:
         print("Error: No videos found!")
         return
     
     # Split into train and validation
-    train_paths, val_paths, train_labels, val_labels = train_test_split(
-        video_paths, labels, test_size=0.2, random_state=42, stratify=labels
+    train_paths, val_paths, train_auth, val_auth, train_emo, val_emo = train_test_split(
+        video_paths, auth_labels, emotion_labels, test_size=0.2, random_state=42, stratify=auth_labels
     )
     
-    print(f"Train videos: {len(train_paths)}, Validation videos: {len(val_paths)}")
+    print(f"Train samples: {len(train_paths)}, Val samples: {len(val_paths)}")
     print()
     
     # Create datasets
-    train_dataset = VideoFrameDataset(train_paths, train_labels, 
+    train_dataset = VideoFrameDataset(train_paths, train_auth, train_emo,
                                      transform=get_transforms(), 
                                      frames_per_video=FRAMES_PER_VIDEO)
-    val_dataset = VideoFrameDataset(val_paths, val_labels, 
+    val_dataset = VideoFrameDataset(val_paths, val_auth, val_emo,
                                    transform=get_test_transforms(), 
                                    frames_per_video=FRAMES_PER_VIDEO)
     
@@ -365,14 +427,15 @@ def main():
         train_acc = train_epoch(model, train_loader, criterion, optimizer, DEVICE, scaler)
         
         # Validate
-        val_loss, val_acc = validate(model, val_loader, criterion, DEVICE)
+        val_loss, val_acc_auth, val_acc_emo = validate(model, val_loader, criterion, DEVICE)
         
         print(f"\nEpoch {epoch + 1} Summary:")
-        print(f"  Train Accuracy: {train_acc:.2f}%")
-        print(f"  Val Loss: {val_loss:.4f} | Val Accuracy: {val_acc:.2f}%")
+        print(f"  Val Loss: {val_loss:.4f}")
+        print(f"  Val Authentication Acc: {val_acc_auth:.2f}%")
+        print(f"  Val Emotion Acc: {val_acc_emo:.2f}%")
         
-        # Learning rate scheduling
-        scheduler.step(val_acc)
+        # Learning rate scheduling based on authenticity performance
+        scheduler.step(val_acc_auth)
         
         # Save checkpoint
         checkpoint_path = f"video_model_epoch_{epoch + 1}.pth"
@@ -380,20 +443,20 @@ def main():
             'epoch': epoch + 1,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'val_acc': val_acc,
-            'train_acc': train_acc,
+            'val_acc_auth': val_acc_auth,
+            'val_acc_emo': val_acc_emo,
         }, checkpoint_path)
         print(f"  Saved checkpoint: {checkpoint_path}")
         
         # Save best model
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
+        if val_acc_auth > best_val_acc:
+            best_val_acc = val_acc_auth
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
-                'val_acc': val_acc,
+                'val_acc': val_acc_auth,
             }, "video_model_best.pth")
-            print(f"  ⭐ New best model! Val Accuracy: {val_acc:.2f}%")
+            print(f"  ⭐ New best model! Auth Accuracy: {val_acc_auth:.2f}%")
     
     total_time = time.time() - start_time
     print("\n" + "=" * 60)
