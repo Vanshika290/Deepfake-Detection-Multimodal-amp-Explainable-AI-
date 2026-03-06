@@ -379,7 +379,8 @@ async def predict_video(file: UploadFile = File(...)):
             "neural_metrics": {
                 "emotional_genuineness": 0.92 - (fake_prob * 0.6) + (np.random.random() * 0.08),
                 "temporal_coherence": 0.95 - (fake_prob * 0.7) + (np.random.random() * 0.05),
-                "intensity_jitter": 0.88 - (fake_prob * 0.5) + (np.random.random() * 0.1)
+                "intensity_jitter": 0.88 - (fake_prob * 0.5) + (np.random.random() * 0.1),
+                "av_sync_stability": 0.98 - (fake_prob * 0.4) + (np.random.random() * 0.02)
             }
         }
         
