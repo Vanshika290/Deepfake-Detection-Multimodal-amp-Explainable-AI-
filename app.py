@@ -210,6 +210,48 @@ class GradCAM:
         
         return cam.detach().cpu().numpy()[0, 0]
 
+# --- ADVANCED SIGNAL FORENSICS ---
+
+def get_fft_image(image_path):
+    """Compute 2D Fast Fourier Transform to find grid artifacts"""
+    try:
+        import cv2
+        img = cv2.imread(image_path, 0) # Grayscale
+        dft = np.fft.fft2(img)
+        dft_shift = np.fft.fftshift(dft)
+        magnitude_spectrum = 20 * np.log(np.abs(dft_shift) + 1)
+        
+        # Normalize for display
+        mag_norm = cv2.normalize(magnitude_spectrum, None, 0, 255, cv2.NORM_MINMAX)
+        mag_norm = np.uint8(mag_norm)
+        mag_color = cv2.applyColorMap(mag_norm, cv2.COLORMAP_VIRIDIS)
+        
+        _, buffer = cv2.imencode('.jpg', mag_color)
+        return base64.b64encode(buffer).decode()
+    except Exception as e:
+        print(f"FFT Error: {e}")
+        return None
+
+def get_noise_print(image_path):
+    """reveals high-frequency noise patterns by subtracting low-frequency content"""
+    try:
+        import cv2
+        img = cv2.imread(image_path)
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+        # High pass filter (Original - Blurred)
+        blurred = cv2.GaussianBlur(img_rgb, (5, 5), 0)
+        noise = cv2.addWeighted(img_rgb, 1, blurred, -1, 128)
+        
+        # Enhance contrast
+        noise = cv2.normalize(noise, None, 0, 255, cv2.NORM_MINMAX)
+        
+        _, buffer = cv2.imencode('.jpg', cv2.cvtColor(noise, cv2.COLOR_RGB2BGR))
+        return base64.b64encode(buffer).decode()
+    except Exception as e:
+        print(f"Noise print error: {e}")
+        return None
+
 def overlay_heatmap(img_np, heatmap):
     """Overlay Grad-CAM heatmap on the original image"""
     heatmap_resized = cv2.resize(heatmap, (img_np.shape[1], img_np.shape[0]))
@@ -455,6 +497,8 @@ async def predict_image(file: UploadFile = File(...)):
         
         metadata = get_metadata(tmp_path)
         ela_b64 = get_ela_image(tmp_path)
+        fft_b64 = get_fft_image(tmp_path)
+        noise_b64 = get_noise_print(tmp_path)
         
         if os.path.exists(tmp_path): os.remove(tmp_path)
 
@@ -469,6 +513,8 @@ async def predict_image(file: UploadFile = File(...)):
             "forensics": {
                 "heatmap": heatmap_b64,
                 "ela": ela_b64,
+                "fft": fft_b64,
+                "noise": noise_b64,
                 "metadata": metadata
             }
         }

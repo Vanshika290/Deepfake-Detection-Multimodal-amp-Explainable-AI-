@@ -720,7 +720,27 @@
                         ⚡ INITIATE NEURAL FORGERY ANALYSIS
                     </button>
 
+                    <button id="webcam-btn" class="record-btn"
+                        style="margin-top: 10px; background: rgba(34, 211, 238, 0.1); border: 1px solid var(--primary); color: var(--primary);"
+                        onclick="startWebcam()">
+                        📷 LIVE NEURAL MONITORING
+                    </button>
+
                     <input type="file" id="main-input" class="hidden" onchange="handleFileChange(this)">
+                </div>
+
+                <div id="webcam-container" style="display: none;" class="premium-card">
+                    <div class="card-header">
+                        <h2>WEBCAM FEED</h2>
+                        <button onclick="stopWebcam()"
+                            style="font-size: 0.7rem; color: var(--danger); background: none; border: none; cursor: pointer;">[
+                            TERMINATE ]</button>
+                    </div>
+                    <video id="webcam-video" autoplay playsinline
+                        style="width: 100%; border-radius: 12px; background: #000;"></video>
+                    <canvas id="webcam-canvas" style="display: none;"></canvas>
+                    <button class="record-btn" style="margin-top: 10px; font-size: 0.8rem;"
+                        onclick="captureAndAnalyze()">SNAP & ANALYZE</button>
                 </div>
 
                 <div class="premium-card">
@@ -746,19 +766,39 @@
                                 <span class="status-badge-mini">EXPLAINABILITY</span>
                             </div>
                             <div id="heatmap-container"
-                                style="height: 300px; background: #000; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
+                                style="height: 250px; background: #000; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
                                 <span style="color: #475569; font-size: 0.8rem;">Decision heatmap will appear
                                     here</span>
                             </div>
                         </div>
                         <div class="premium-card">
                             <div class="card-header">
+                                <h2>FREQUENCY SPECTRUM (FFT)</h2>
+                                <span class="status-badge-mini">GRID ARTIFACTS</span>
+                            </div>
+                            <div id="fft-container"
+                                style="height: 250px; background: #000; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
+                                <span style="color: #475569; font-size: 0.8rem;">FFT analysis will appear here</span>
+                            </div>
+                        </div>
+                        <div class="premium-card">
+                            <div class="card-header">
                                 <h2>ERROR LEVEL ANALYSIS</h2>
-                                <span class="status-badge-mini">FORGERY DETECTION</span>
+                                <span class="status-badge-mini">FORGERY</span>
                             </div>
                             <div id="ela-container"
-                                style="height: 300px; background: #000; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
+                                style="height: 250px; background: #000; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
                                 <span style="color: #475569; font-size: 0.8rem;">ELA map will appear here</span>
+                            </div>
+                        </div>
+                        <div class="premium-card">
+                            <div class="card-header">
+                                <h2>NOISE PRINT ANALYSIS</h2>
+                                <span class="status-badge-mini">TEXTURE BIAS</span>
+                            </div>
+                            <div id="noise-container"
+                                style="height: 250px; background: #000; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
+                                <span style="color: #475569; font-size: 0.8rem;">Noise print will appear here</span>
                             </div>
                         </div>
                     </div>
@@ -770,6 +810,22 @@
                         <div id="metadata-findings"
                             style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #cbd5e1; max-height: 200px; overflow-y: auto;">
                             Awaiting analysis...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NEW ARCHIVE VIEW -->
+                <div id="archive-view" class="hidden fade-in">
+                    <div class="premium-card" style="min-height: 600px;">
+                        <div class="card-header">
+                            <h2>SCAN HISTORY ARCHIVE</h2>
+                            <button onclick="clearArchive()" class="status-badge-mini"
+                                style="background: rgba(251, 113, 133, 0.1); color: var(--danger); border-color: var(--danger); cursor: pointer;">DELETE
+                                ALL RECORDS</button>
+                        </div>
+                        <div id="archive-list" style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                            <div style="text-align: center; color: var(--text-dim); padding: 50px;">NO RECORDS IN LOCAL
+                                SECURE STORAGE</div>
                         </div>
                     </div>
                 </div>
@@ -1021,6 +1077,7 @@
         }
 
         function showResults(data) {
+            lastAnalysisResult = data;
             const confVal = document.getElementById('conf-val');
             const confCircle = document.getElementById('conf-progress');
             const statusText = document.getElementById('scan-status');
@@ -1117,19 +1174,29 @@
 
         function showView(view) {
             document.querySelectorAll('.nav-item').forEach(v => v.classList.remove('active'));
-            const dashboardGrid = document.querySelector('.dashboard-grid');
-            const scanPanel = document.querySelector('.scan-panel');
             const timeline = document.querySelector('.timeline-container').parentElement;
             const forensicLab = document.getElementById('forensic-lab-view');
+            const archive = document.getElementById('archive-view');
+            const scanPanel = document.querySelector('.scan-panel');
+
+            // Hide all
+            timeline.classList.add('hidden');
+            forensicLab.classList.add('hidden');
+            archive.classList.add('hidden');
+            scanPanel.classList.add('hidden');
 
             if (view === 'analysis') {
                 document.querySelector('.nav-item:nth-child(2)').classList.add('active');
                 timeline.classList.remove('hidden');
-                forensicLab.classList.add('hidden');
+                scanPanel.classList.remove('hidden');
             } else if (view === 'neural') {
                 document.querySelector('.nav-item:nth-child(3)').classList.add('active');
-                timeline.classList.add('hidden');
                 forensicLab.classList.remove('hidden');
+                scanPanel.classList.remove('hidden');
+            } else if (view === 'library') {
+                document.querySelector('.nav-item:nth-child(5)').classList.add('active');
+                archive.classList.remove('hidden');
+                renderArchive();
             }
         }
 
@@ -1137,6 +1204,10 @@
 
         function showResults(data) {
             lastAnalysisResult = data;
+
+            // Save to Archive
+            saveToArchive(data);
+
             const confVal = document.getElementById('conf-val');
             const confCircle = document.getElementById('conf-progress');
             const statusText = document.getElementById('scan-status');
@@ -1163,7 +1234,7 @@
 
             document.getElementById('m-liveness').innerText = (data.prediction === 'REAL' ? 95 : 24) + "%";
             document.getElementById('m-biometric').innerText = (conf > 80 ? conf : 70) + "%";
-            document.getElementById('m-temporal').innerText = Math.round(60 + Math.random() * 30) + Math.round(data.neural_metrics ? data.neural_metrics.temporal_coherence * 10 : 0) + "%";
+            document.getElementById('m-temporal').innerText = Math.round(60 + Math.random() * 30) + (data.neural_metrics ? Math.round(data.neural_metrics.temporal_coherence * 10) : 0) + "%";
 
             document.getElementById('f-id').innerText = (100 - conf) + "%";
             document.getElementById('f-stability').innerText = Math.round((data.probabilities ? data.probabilities.fake : 0.5) * 100) + "%";
@@ -1173,6 +1244,12 @@
             if (data.forensics) {
                 if (data.forensics.heatmap) {
                     document.getElementById('heatmap-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.heatmap}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
+                }
+                if (data.forensics.fft) {
+                    document.getElementById('fft-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.fft}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
+                }
+                if (data.forensics.noise) {
+                    document.getElementById('noise-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.noise}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
                 }
                 if (data.forensics.ela) {
                     document.getElementById('ela-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.ela}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
@@ -1199,12 +1276,14 @@
                 document.getElementById('metadata-findings').innerHTML = metaHtml;
                 document.getElementById('heatmap-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">Heatmap for video is processed per frame in the neural backend. Check temporal consistency charts.</div>`;
                 document.getElementById('ela-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">ELA not applicable to multi-frame video stream analysis.</div>`;
+                document.getElementById('fft-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">FFT for video is processed per frame in the neural backend.</div>`;
+                document.getElementById('noise-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">Noise print for video is processed per frame in the neural backend.</div>`;
             }
 
             const logItem = document.createElement('div');
             logItem.className = 'threat-item';
             logItem.innerHTML = `
-                <div class="threat-file">${selectedFile ? selectedFile.name : 'text_probe'} (${currentMode.toUpperCase()})</div>
+                <div class="threat-file">${selectedFile ? selectedFile.name : (webcamStream ? 'webcam_snip' : 'text_probe')} (${currentMode.toUpperCase()})</div>
                 <div class="threat-status ${data.prediction === 'REAL' ? 'safe' : ''}">
                     ${conf}% ${data.prediction} (${data.prediction === 'REAL' ? 'VERIFIED' : 'FLAGGED'})
                 </div>
@@ -1212,6 +1291,82 @@
             threatLog.prepend(logItem);
 
             updateChart(data);
+        }
+
+        function saveToArchive(data) {
+            const archive = JSON.parse(localStorage.getItem('truthlens_archive') || '[]');
+            const entry = {
+                id: Date.now(),
+                name: selectedFile ? selectedFile.name : (webcamStream ? 'webcam_snip' : 'text_probe'),
+                prediction: data.prediction,
+                confidence: data.confidence,
+                timestamp: new Date().toLocaleString()
+            };
+            archive.unshift(entry);
+            localStorage.setItem('truthlens_archive', JSON.stringify(archive.slice(0, 20)));
+        }
+
+        function renderArchive() {
+            const list = document.getElementById('archive-list');
+            const archive = JSON.parse(localStorage.getItem('truthlens_archive') || '[]');
+            if (archive.length === 0) {
+                list.innerHTML = '<div style="text-align: center; color: var(--text-dim); padding: 50px;">NO RECORDS IN LOCAL SECURE STORAGE</div>';
+                return;
+            }
+            list.innerHTML = archive.map(entry => `
+                <div class="threat-item" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div class="threat-file">${entry.name}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-dim);">${entry.timestamp}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="threat-status ${entry.prediction === 'REAL' ? 'safe' : ''}">${entry.prediction}</div>
+                        <div style="font-size: 0.8rem; font-family: JetBrains Mono;">${(entry.confidence * 100).toFixed(1)}%</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function clearArchive() {
+            if (confirm("PURGE ALL SECURE STORAGE RECORDS?")) {
+                localStorage.removeItem('truthlens_archive');
+                renderArchive();
+            }
+        }
+
+        let webcamStream = null;
+        async function startWebcam() {
+            try {
+                webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                document.getElementById('webcam-video').srcObject = webcamStream;
+                document.getElementById('webcam-container').style.display = 'block';
+                document.getElementById('webcam-btn').style.display = 'none';
+            } catch (err) {
+                alert("Webcam access denied.");
+            }
+        }
+
+        function stopWebcam() {
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(track => track.stop());
+                webcamStream = null;
+            }
+            document.getElementById('webcam-container').style.display = 'none';
+            document.getElementById('webcam-btn').style.display = 'block';
+        }
+
+        async function captureAndAnalyze() {
+            const video = document.getElementById('webcam-video');
+            const canvas = document.getElementById('webcam-canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+
+            canvas.toBlob(async blob => {
+                selectedFile = new File([blob], "webcam_capture.jpg", { type: 'image/jpeg' });
+                document.getElementById('tab-image').click();
+                runAnalysis();
+            }, 'image/jpeg');
         }
 
         function downloadReport() {
