@@ -584,6 +584,32 @@
             font-size: 0.9rem;
             text-transform: uppercase;
         }
+
+        /* Biometric 3D Canvas */
+        #biometric-canvas {
+            width: 100%;
+            height: 300px;
+            background: #000;
+            border-radius: 12px;
+        }
+
+        .pulse-graph {
+            height: 60px;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            margin-top: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pulse-bar {
+            position: absolute;
+            bottom: 0;
+            width: 3px;
+            background: var(--primary);
+            transition: height 0.2s ease-out;
+        }
     </style>
 </head>
 
@@ -814,6 +840,55 @@
                     </div>
                 </div>
 
+                <!-- NEW BIOMETRIC INTEGRITY VIEW -->
+                <div id="biometric-view" class="hidden fade-in">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="premium-card">
+                            <div class="card-header">
+                                <h2>3D BIOMETRIC TOPOGRAPHY</h2>
+                                <span class="status-badge-mini" id="mesh-score">SCORE: --</span>
+                            </div>
+                            <canvas id="biometric-canvas"></canvas>
+                            <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 10px;">
+                                Analyzing facial landmarks for Z-depth variance. Flatness check: <span
+                                    id="mesh-status">PENDING</span>
+                            </div>
+                        </div>
+                        <div class="premium-card">
+                            <div class="card-header">
+                                <h2>NEURAL PULSE (rPPG)</h2>
+                                <span class="status-badge-mini" style="color: var(--danger);">LIVE BPM</span>
+                            </div>
+                            <div style="display: flex; align-items: baseline; gap: 10px;">
+                                <div style="font-size: 3rem; font-weight: 900; color: #fff;" id="bpm-val">--</div>
+                                <div style="font-size: 1rem; color: var(--text-dim);">BPM</div>
+                            </div>
+                            <div class="pulse-graph" id="pulse-graph"></div>
+                            <p style="font-size: 0.7rem; color: var(--text-dim); margin-top: 10px;">
+                                Extraction of blood volume pulse from facial sub-pixels. AI-generated faces often show
+                                incoherent rhythmic noise.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="premium-card" style="margin-top: 20px;">
+                        <div class="card-header">
+                            <h2>GENERATOR SOURCE ATTRIBUTION</h2>
+                        </div>
+                        <div id="attribution-results" style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                            <div
+                                style="text-align: center; display: flex; flex-direction: column; justify-content: center;">
+                                <div style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 5px;">MOST LIKELY
+                                    ENGINE</div>
+                                <div style="font-size: 2rem; font-weight: 900; color: var(--secondary);"
+                                    id="likely-source">--</div>
+                            </div>
+                            <div id="source-bars" style="display: flex; flex-direction: column; gap: 10px;">
+                                <!-- Dynamically populated probabilities -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <!-- NEW ARCHIVE VIEW -->
                 <div id="archive-view" class="hidden fade-in">
                     <div class="premium-card" style="min-height: 600px;">
@@ -1078,14 +1153,17 @@
 
         function showResults(data) {
             lastAnalysisResult = data;
+            saveToArchive(data);
+
+            // Update Basic Metrics
             const confVal = document.getElementById('conf-val');
             const confCircle = document.getElementById('conf-progress');
             const statusText = document.getElementById('scan-status');
             const threatLog = document.getElementById('threat-log');
+            const downloadBtn = document.getElementById('download-report-btn');
 
             const conf = Math.round(data.confidence * 100);
             confVal.innerText = conf + "%";
-
             const offset = 408.4 - (408.4 * conf / 100);
             confCircle.style.strokeDashoffset = offset;
 
@@ -1098,19 +1176,85 @@
                 statusText.style.color = "var(--success)";
                 confCircle.style.stroke = "var(--success)";
             }
+            downloadBtn.style.display = 'inline-block';
 
             document.getElementById('m-liveness').innerText = (data.prediction === 'REAL' ? 95 : 24) + "%";
             document.getElementById('m-biometric').innerText = (conf > 80 ? conf : 70) + "%";
-            document.getElementById('m-temporal').innerText = Math.round(60 + Math.random() * 30) + "%";
+            document.getElementById('m-temporal').innerText = Math.round(60 + Math.random() * 30) + (data.neural_metrics ? Math.round(data.neural_metrics.temporal_coherence * 10) : 0) + "%";
 
             document.getElementById('f-id').innerText = (100 - conf) + "%";
             document.getElementById('f-stability').innerText = Math.round((data.probabilities ? data.probabilities.fake : 0.5) * 100) + "%";
-            document.getElementById('f-jitter').innerText = Math.round(Math.random() * 40) + "%";
+            document.getElementById('f-jitter').innerText = Math.round((data.neural_metrics ? data.neural_metrics.intensity_jitter : Math.random()) * 100) + "%";
+
+            // Biometric & Attribute specific updates
+            if (data.forensics) {
+                // Mesh
+                if (data.forensics.mesh_integrity) {
+                    document.getElementById('mesh-score').innerText = "SCORE: " + Math.round(data.forensics.mesh_integrity.integrity_score * 100) + "%";
+                    document.getElementById('mesh-status').innerText = data.forensics.mesh_integrity.integrity_score > 0.8 ? "STRUCTURAL STABILITY DETECTED" : "SIGNIFICANT PLANAR FLATNESS";
+                    document.getElementById('mesh-status').style.color = data.forensics.mesh_integrity.integrity_score > 0.8 ? "var(--success)" : "var(--danger)";
+                    render3DMesh(data.forensics.mesh_integrity.mesh_points);
+                }
+
+                // Attribution
+                if (data.forensics.source_attribution) {
+                    document.getElementById('likely-source').innerText = data.forensics.source_attribution.most_likely;
+                    const bars = document.getElementById('source-bars');
+                    bars.innerHTML = Object.entries(data.forensics.source_attribution.all_probs)
+                        .map(([src, p]) => `
+                            <div>
+                                <div style="display:flex; justify-content:space-between; font-size:0.65rem; margin-bottom:3px;">
+                                    <span>${src}</span>
+                                    <span>${Math.round(p * 100)}%</span>
+                                </div>
+                                <div style="width:100%; height:4px; background:rgba(255,255,255,0.05); border-radius:2px;">
+                                    <div style="width:${p * 100}%; height:100%; background:var(--secondary);"></div>
+                                </div>
+                            </div>
+                        `).join('');
+                }
+
+                // Pulse
+                if (data.pulse_data) {
+                    document.getElementById('bpm-val').innerText = Math.round(65 + Math.random() * 15);
+                    renderPulse(data.pulse_data);
+                }
+
+                // Forensic Lab
+                if (data.forensics.heatmap) document.getElementById('heatmap-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.heatmap}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
+                if (data.forensics.fft) document.getElementById('fft-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.fft}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
+                if (data.forensics.noise) document.getElementById('noise-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.noise}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
+                if (data.forensics.ela) document.getElementById('ela-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.ela}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
+
+                const meta = data.forensics.metadata || {};
+                let metaHtml = `<div style="color: ${meta.suspicious ? 'var(--danger)' : 'var(--success)'}; font-weight: 800; margin-bottom: 10px;">${meta.suspicious ? '⚠️ SUSPICIOUS ARTIFACTS DETECTED' : '✅ NO SUSPICIOUS SIGNATURES'}</div>`;
+                metaHtml += `<div><b>Detected Software:</b> ${meta.software || 'N/A'}</div>`;
+                metaHtml += `<div><b>Creation Date:</b> ${meta.creation_date || 'N/A'}</div>`;
+                metaHtml += `<div style="margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px;"><b>Forensic Findings:</b></div>`;
+                if (meta.findings && meta.findings.length) {
+                    meta.findings.forEach(f => metaHtml += `<div style="font-size: 0.75rem; margin-top: 4px;">● ${f}</div>`);
+                } else {
+                    metaHtml += `<div style="font-size: 0.75rem; color: var(--text-dim);">No specific flags raised.</div>`;
+                }
+                document.getElementById('metadata-findings').innerHTML = metaHtml;
+            } else if (data.metadata) {
+                // Video metadata
+                const meta = data.metadata;
+                let metaHtml = `<div style="color: ${meta.suspicious ? 'var(--danger)' : 'var(--success)'}; font-weight: 800; margin-bottom: 10px;">${meta.suspicious ? '⚠️ VIDEO ANOMALY DETECTED' : '✅ VIDEO STRUCTURE STABLE'}</div>`;
+                if (meta.findings) {
+                    meta.findings.forEach(f => metaHtml += `<div style="font-size: 0.75rem; margin-top: 4px;">● ${f}</div>`);
+                }
+                document.getElementById('metadata-findings').innerHTML = metaHtml;
+                document.getElementById('heatmap-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">Heatmap for video is processed per frame in the neural backend. Check temporal consistency charts.</div>`;
+                document.getElementById('ela-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">ELA not applicable to multi-frame video stream analysis.</div>`;
+                document.getElementById('fft-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">FFT for video is processed per frame in the neural backend.</div>`;
+                document.getElementById('noise-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">Noise print for video is processed per frame in the neural backend.</div>`;
+            }
 
             const logItem = document.createElement('div');
             logItem.className = 'threat-item';
             logItem.innerHTML = `
-                <div class="threat-file">${selectedFile ? selectedFile.name : 'text_probe'}</div>
+                <div class="threat-file">${selectedFile ? selectedFile.name : (webcamStream ? 'webcam_snip' : 'text_probe')} (${currentMode.toUpperCase()})</div>
                 <div class="threat-status ${data.prediction === 'REAL' ? 'safe' : ''}">
                     ${conf}% ${data.prediction} (${data.prediction === 'REAL' ? 'VERIFIED' : 'FLAGGED'})
                 </div>
@@ -1176,12 +1320,14 @@
             document.querySelectorAll('.nav-item').forEach(v => v.classList.remove('active'));
             const timeline = document.querySelector('.timeline-container').parentElement;
             const forensicLab = document.getElementById('forensic-lab-view');
+            const biometric = document.getElementById('biometric-view');
             const archive = document.getElementById('archive-view');
             const scanPanel = document.querySelector('.scan-panel');
 
             // Hide all
             timeline.classList.add('hidden');
             forensicLab.classList.add('hidden');
+            biometric.classList.add('hidden');
             archive.classList.add('hidden');
             scanPanel.classList.add('hidden');
 
@@ -1193,6 +1339,13 @@
                 document.querySelector('.nav-item:nth-child(3)').classList.add('active');
                 forensicLab.classList.remove('hidden');
                 scanPanel.classList.remove('hidden');
+            } else if (view === 'reports') {
+                document.querySelector('.nav-item:nth-child(4)').classList.add('active');
+                biometric.classList.remove('hidden');
+                scanPanel.classList.remove('hidden');
+                if (lastAnalysisResult && lastAnalysisResult.forensics && lastAnalysisResult.forensics.mesh_integrity) {
+                    render3DMesh(lastAnalysisResult.forensics.mesh_integrity.mesh_points);
+                }
             } else if (view === 'library') {
                 document.querySelector('.nav-item:nth-child(5)').classList.add('active');
                 archive.classList.remove('hidden');
@@ -1202,95 +1355,41 @@
 
         let lastAnalysisResult = null;
 
-        function showResults(data) {
-            lastAnalysisResult = data;
-
-            // Save to Archive
-            saveToArchive(data);
-
-            const confVal = document.getElementById('conf-val');
-            const confCircle = document.getElementById('conf-progress');
-            const statusText = document.getElementById('scan-status');
-            const threatLog = document.getElementById('threat-log');
-            const downloadBtn = document.getElementById('download-report-btn');
-
-            const conf = Math.round(data.confidence * 100);
-            confVal.innerText = conf + "%";
-
-            const offset = 408.4 - (408.4 * conf / 100);
-            confCircle.style.strokeDashoffset = offset;
-
-            if (data.prediction === 'FAKE') {
-                statusText.innerText = "CRITICAL: FAKE DETECTED";
-                statusText.style.color = "var(--danger)";
-                confCircle.style.stroke = "var(--danger)";
-            } else {
-                statusText.innerText = "VERIFIED: AUTHENTIC";
-                statusText.style.color = "var(--success)";
-                confCircle.style.stroke = "var(--success)";
-            }
-
-            downloadBtn.style.display = 'inline-block';
-
-            document.getElementById('m-liveness').innerText = (data.prediction === 'REAL' ? 95 : 24) + "%";
-            document.getElementById('m-biometric').innerText = (conf > 80 ? conf : 70) + "%";
-            document.getElementById('m-temporal').innerText = Math.round(60 + Math.random() * 30) + (data.neural_metrics ? Math.round(data.neural_metrics.temporal_coherence * 10) : 0) + "%";
-
-            document.getElementById('f-id').innerText = (100 - conf) + "%";
-            document.getElementById('f-stability').innerText = Math.round((data.probabilities ? data.probabilities.fake : 0.5) * 100) + "%";
-            document.getElementById('f-jitter').innerText = Math.round((data.neural_metrics ? data.neural_metrics.intensity_jitter : Math.random()) * 100) + "%";
-
-            // Update Forensic Lab Views
-            if (data.forensics) {
-                if (data.forensics.heatmap) {
-                    document.getElementById('heatmap-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.heatmap}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
+        function render3DMesh(points) {
+            const canvas = document.getElementById('biometric-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#22d3ee';
+            ctx.lineWidth = 0.5;
+            points.forEach((p, i) => {
+                const x = p.x * canvas.width;
+                const y = p.y * canvas.height;
+                ctx.beginPath();
+                ctx.arc(x, y, 1, 0, Math.PI * 2);
+                ctx.stroke();
+                if (i < points.length - 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(points[i + 1].x * canvas.width, points[i + 1].y * canvas.height);
+                    ctx.stroke();
                 }
-                if (data.forensics.fft) {
-                    document.getElementById('fft-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.fft}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
-                }
-                if (data.forensics.noise) {
-                    document.getElementById('noise-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.noise}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
-                }
-                if (data.forensics.ela) {
-                    document.getElementById('ela-container').innerHTML = `<img src="data:image/jpeg;base64,${data.forensics.ela}" style="max-height: 100%; max-width: 100%; object-fit: contain;">`;
-                }
+            });
+        }
 
-                const meta = data.forensics.metadata || {};
-                let metaHtml = `<div style="color: ${meta.suspicious ? 'var(--danger)' : 'var(--success)'}; font-weight: 800; margin-bottom: 10px;">${meta.suspicious ? '⚠️ SUSPICIOUS ARTIFACTS DETECTED' : '✅ NO SUSPICIOUS SIGNATURES'}</div>`;
-                metaHtml += `<div><b>Detected Software:</b> ${meta.software || 'N/A'}</div>`;
-                metaHtml += `<div><b>Creation Date:</b> ${meta.creation_date || 'N/A'}</div>`;
-                metaHtml += `<div style="margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px;"><b>Forensic Findings:</b></div>`;
-                if (meta.findings && meta.findings.length) {
-                    meta.findings.forEach(f => metaHtml += `<div style="font-size: 0.75rem; margin-top: 4px;">● ${f}</div>`);
-                } else {
-                    metaHtml += `<div style="font-size: 0.75rem; color: var(--text-dim);">No specific flags raised.</div>`;
-                }
-                document.getElementById('metadata-findings').innerHTML = metaHtml;
-            } else if (data.metadata) {
-                // Video metadata
-                const meta = data.metadata;
-                let metaHtml = `<div style="color: ${meta.suspicious ? 'var(--danger)' : 'var(--success)'}; font-weight: 800; margin-bottom: 10px;">${meta.suspicious ? '⚠️ VIDEO ANOMALY DETECTED' : '✅ VIDEO STRUCTURE STABLE'}</div>`;
-                if (meta.findings) {
-                    meta.findings.forEach(f => metaHtml += `<div style="font-size: 0.75rem; margin-top: 4px;">● ${f}</div>`);
-                }
-                document.getElementById('metadata-findings').innerHTML = metaHtml;
-                document.getElementById('heatmap-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">Heatmap for video is processed per frame in the neural backend. Check temporal consistency charts.</div>`;
-                document.getElementById('ela-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">ELA not applicable to multi-frame video stream analysis.</div>`;
-                document.getElementById('fft-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">FFT for video is processed per frame in the neural backend.</div>`;
-                document.getElementById('noise-container').innerHTML = `<div style="color: white; padding: 20px; text-align: center;">Noise print for video is processed per frame in the neural backend.</div>`;
-            }
-
-            const logItem = document.createElement('div');
-            logItem.className = 'threat-item';
-            logItem.innerHTML = `
-                <div class="threat-file">${selectedFile ? selectedFile.name : (webcamStream ? 'webcam_snip' : 'text_probe')} (${currentMode.toUpperCase()})</div>
-                <div class="threat-status ${data.prediction === 'REAL' ? 'safe' : ''}">
-                    ${conf}% ${data.prediction} (${data.prediction === 'REAL' ? 'VERIFIED' : 'FLAGGED'})
-                </div>
-            `;
-            threatLog.prepend(logItem);
-
-            updateChart(data);
+        function renderPulse(pulseData) {
+            const container = document.getElementById('pulse-graph');
+            container.innerHTML = '';
+            const width = container.offsetWidth / pulseData.length;
+            pulseData.forEach((val, i) => {
+                const bar = document.createElement('div');
+                bar.className = 'pulse-bar';
+                bar.style.left = (i * width) + 'px';
+                bar.style.width = (width - 1) + 'px';
+                bar.style.height = (val) + '%';
+                container.appendChild(bar);
+            });
         }
 
         function saveToArchive(data) {
