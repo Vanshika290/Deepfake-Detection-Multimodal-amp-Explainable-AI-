@@ -38,6 +38,9 @@ Notes
 - `app.py` exposes `/predict` for videos and `/predict_image` for images.
 - All models now use **SOTA Architectures**: **EfficientNet-B1-LSTM** for videos and **EfficientNetV2-S** for images.
 - All pipelines now include **MediaPipe Face Detection** for robust face-focused analysis.
+- **Forensic Explainability**: Includes **Grad-CAM Heatmaps** and **Error Level Analysis (ELA)** for visual proof of manipulation.
+- **Metadata Forensics**: Automated scanning for AI-generator signatures and codec anomalies.
+- **Automated Reporting**: In-dashboard PDF generation of forensic findings.
 - For best results, re-run the training scripts as the previous ResNet18 weights are incompatible with the new high-accuracy architectures.
 - Make sure to install `mediapipe` (already in `requirements.txt`).
 

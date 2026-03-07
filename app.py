@@ -13,6 +13,9 @@ from PIL import Image
 import uvicorn
 import io
 import time
+import base64
+from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
+import torch.nn.functional as F
 
 # Import model architecture and transforms from test script
 from test_video_model import DeepfakeDetector, get_transforms, DEVICE, FRAMES_PER_VIDEO
@@ -73,7 +76,156 @@ async def lifespan(app: FastAPI):
     # Cleanup on shutdown (if needed)
 
 
-app = FastAPI(title="Deepfake Detection API", description="API for detecting deepfake videos", version="1.0.0", lifespan=lifespan)
+# --- FORENSIC UTILITIES ---
+
+def get_metadata(file_path, is_video=False):
+    """Extract forensic metadata from the file"""
+    results = {
+        "suspicious": False,
+        "findings": [],
+        "software": "Unknown",
+        "creation_date": "Unknown"
+    }
+    
+    try:
+        if not is_video:
+            from PIL import Image
+            from PIL.ExifTags import TAGS
+            img = Image.open(file_path)
+            info = img.info
+            
+            # Check for common AI software signatures in metadata
+            ai_keywords = ['stable diffusion', 'midjourney', 'dall-e', 'adobe firefly', 'generative', 'gan']
+            
+            # Check info dict (often contains software tags)
+            for k, v in info.items():
+                if any(kw in str(v).lower() for kw in ai_keywords):
+                    results["suspicious"] = True
+                    results["findings"].append(f"AI Signature found in {k}: {v}")
+                if k.lower() == 'software':
+                    results["software"] = str(v)
+
+            # Check EXIF
+            exif = img.getexif()
+            if exif:
+                for tag_id, v in exif.items():
+                    tag = TAGS.get(tag_id, tag_id)
+                    if any(kw in str(v).lower() for kw in ai_keywords):
+                        results["suspicious"] = True
+                        results["findings"].append(f"AI Signature in EXIF {tag}: {v}")
+                    if tag == 'Software':
+                        results["software"] = str(v)
+                    if tag == 'DateTime':
+                        results["creation_date"] = str(v)
+        else:
+            # Video metadata using OpenCV properties
+            cap = cv2.VideoCapture(file_path)
+            if cap.isOpened():
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                codec = int(cap.get(cv2.CAP_PROP_FOURCC))
+                codec_str = "".join([chr((codec >> 8 * i) & 0xFF) for i in range(4)])
+                results["findings"].append(f"Codec: {codec_str}, FPS: {fps:.2f}")
+                
+                # Heuristic: Extremely high or non-standard FPS can be suspicious in some datasets
+                if fps > 60:
+                    results["suspicious"] = True
+                    results["findings"].append("Non-standard high frame rate detected")
+                cap.release()
+    except Exception as e:
+        results["findings"].append(f"Metadata error: {str(e)}")
+        
+    return results
+
+def get_ela_image(image_path, quality=90):
+    """Perform Error Level Analysis (ELA) to detect compression inconsistencies"""
+    try:
+        from PIL import Image, ImageChops
+        
+        temp_ela = "temp_ela.jpg"
+        original = Image.open(image_path).convert('RGB')
+        
+        # Save at a specific quality and reload
+        original.save(temp_ela, 'JPEG', quality=quality)
+        temporary = Image.open(temp_ela)
+        
+        # Calculate difference
+        ela_img = ImageChops.difference(original, temporary)
+        
+        # Extrapolate (boost) the difference so it's visible
+        extrema = ela_img.getextrema()
+        max_diff = max([ex[1] for ex in extrema])
+        if max_diff == 0: max_diff = 1
+        scale = 255.0 / max_diff
+        ela_img = ImageChops.multiply(ela_img, Image.new('RGB', ela_img.size, (int(scale), int(scale), int(scale))))
+        
+        # Convert to base64
+        buffered = io.BytesIO()
+        ela_img.save(buffered, format="JPEG")
+        ela_str = base64.b64encode(buffered.getvalue()).decode()
+        
+        if os.path.exists(temp_ela): os.remove(temp_ela)
+        return ela_str
+    except Exception as e:
+        print(f"ELA Error: {e}")
+        return None
+
+# --- GRAD-CAM IMPLEMENTATION ---
+
+class GradCAM:
+    def __init__(self, model, target_layer):
+        self.model = model
+        self.target_layer = target_layer
+        self.gradients = None
+        self.activations = None
+        
+        def save_gradient(grad):
+            self.gradients = grad
+            
+        def forward_hook(module, input, output):
+            self.activations = output
+            output.register_hook(save_gradient)
+            
+        target_layer.register_forward_hook(forward_hook)
+
+    def generate(self, input_tensor, class_idx=None):
+        self.model.zero_grad()
+        output = self.model(input_tensor)
+        
+        if class_idx is None:
+            class_idx = output.argmax(dim=1).item()
+            
+        target = output[0, class_idx]
+        target.backward()
+        
+        # Pool the gradients across the channels
+        weights = torch.mean(self.gradients, dim=(2, 3), keepdim=True)
+        
+        # Weight the activations by the pooled gradients
+        cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
+        
+        # ReLU and Normalize
+        cam = F.relu(cam)
+        cam = cam - cam.min()
+        cam = cam / (cam.max() + 1e-7)
+        
+        return cam.detach().cpu().numpy()[0, 0]
+
+def overlay_heatmap(img_np, heatmap):
+    """Overlay Grad-CAM heatmap on the original image"""
+    heatmap_resized = cv2.resize(heatmap, (img_np.shape[1], img_np.shape[0]))
+    heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap_resized), cv2.COLORMAP_JET)
+    heatmap_color = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
+    
+    # Blend
+    alpha = 0.5
+    overlayed = cv2.addWeighted(img_np, 1 - alpha, heatmap_color, alpha, 0)
+    
+    # Convert to base64
+    _, buffer = cv2.imencode('.jpg', cv2.cvtColor(overlayed, cv2.COLOR_RGB2BGR))
+    return base64.b64encode(buffer).decode()
+
+
+app = FastAPI(title="TruthLens AI | Neural Forgery Defense API", description="SOTA Deepfake Detection with Forensic Explainability", version="2.0.0", lifespan=lifespan)
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -283,6 +435,29 @@ async def predict_image(file: UploadFile = File(...)):
             probs = torch.softmax(outputs, dim=1)[0]
             pred = int(outputs.argmax(dim=1).item())
 
+        # --- Explainability Step ---
+        heatmap_b64 = None
+        try:
+            # For EfficientNetV2-S, the last conv layer is often in model.features[-1]
+            target_layer = image_model.features[-1]
+            gcam = GradCAM(image_model, target_layer)
+            # Input needs gradients for backprop
+            tensor_grad = tensor.clone().detach().requires_grad_(True)
+            heatmap = gcam.generate(tensor_grad, class_idx=pred)
+            heatmap_b64 = overlay_heatmap(img_np, heatmap)
+        except Exception as e:
+            print(f"Grad-CAM failed: {e}")
+
+        # Save to temp file for metadata analysis
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        
+        metadata = get_metadata(tmp_path)
+        ela_b64 = get_ela_image(tmp_path)
+        
+        if os.path.exists(tmp_path): os.remove(tmp_path)
+
         result = {
             "prediction": "FAKE" if pred == 1 else "REAL",
             "confidence": float(probs[pred].item()),
@@ -290,7 +465,12 @@ async def predict_image(file: UploadFile = File(...)):
                 "fake": float(probs[1].item()),
                 "real": float(probs[0].item())
             },
-            "face_bbox": face_bbox if 'face_bbox' in locals() else None
+            "face_bbox": face_bbox if 'face_bbox' in locals() else None,
+            "forensics": {
+                "heatmap": heatmap_b64,
+                "ela": ela_b64,
+                "metadata": metadata
+            }
         }
 
         return JSONResponse(content=result)
@@ -381,7 +561,8 @@ async def predict_video(file: UploadFile = File(...)):
                 "temporal_coherence": 0.95 - (fake_prob * 0.7) + (np.random.random() * 0.05),
                 "intensity_jitter": 0.88 - (fake_prob * 0.5) + (np.random.random() * 0.1),
                 "av_sync_stability": 0.98 - (fake_prob * 0.4) + (np.random.random() * 0.02)
-            }
+            },
+            "metadata": get_metadata(temp_path, is_video=True)
         }
         
         return JSONResponse(content=result)
