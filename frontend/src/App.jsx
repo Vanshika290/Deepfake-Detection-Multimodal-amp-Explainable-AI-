@@ -4,6 +4,7 @@ import NeuralCenterpiece from './components/NeuralCenterpiece';
 import ModalityCard from './components/ModalityCard';
 import ScannerView from './components/ScannerView';
 import ResultDashboard from './components/ResultDashboard';
+import CaptureView from './components/CaptureView';
 import { Camera, Video, Mic, Type, Upload, ArrowLeft, Activity } from 'lucide-react';
 import axios from 'axios';
 
@@ -21,6 +22,7 @@ export default function App() {
   const [selectedModality, setSelectedModality] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [file, setFile] = useState(null);
+  const [isCaptureViewOpen, setIsCaptureViewOpen] = useState(false);
 
   const handleModalitySelect = (mod) => {
     setSelectedModality(mod);
@@ -170,7 +172,7 @@ export default function App() {
                 ) : (
                   <div
                     className="group flex flex-col items-center justify-center bg-white/5 rounded-[2rem] p-10 border border-white/5 hover:border-secondary/50 transition-all cursor-pointer relative overflow-hidden"
-                    onClick={() => alert(`Direct ${selectedModality.id} capture protocol active... (Simulation Mode)`)}
+                    onClick={() => setIsCaptureViewOpen(true)}
                   >
                     <div className="absolute inset-0 bg-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                     <Activity className="text-secondary mb-4" size={40} />
@@ -186,6 +188,17 @@ export default function App() {
           <ScannerView
             modality={selectedModality.id}
             onComplete={() => setView('result')}
+          />
+        )}
+
+        {isCaptureViewOpen && (
+          <CaptureView
+            modality={selectedModality.id}
+            onCapture={(file) => {
+              setIsCaptureViewOpen(false);
+              startAnalysis(file);
+            }}
+            onClose={() => setIsCaptureViewOpen(false)}
           />
         )}
 
