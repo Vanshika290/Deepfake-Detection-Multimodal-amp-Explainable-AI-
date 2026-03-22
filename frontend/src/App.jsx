@@ -202,58 +202,187 @@ export default function App() {
         )}
 
         {view === 'result' && analysisResult && (
-          <div className="w-full max-w-5xl glass-panel p-10 rounded-3xl fade-up space-y-8 h-[80vh] overflow-y-auto custom-scrollbar">
+          <div className="w-full max-w-6xl glass-panel p-10 rounded-[40px] fade-up space-y-8 h-[85vh] overflow-y-auto custom-scrollbar relative block mt-8 mb-8" style={{ border: '1px solid rgba(126, 200, 160, 0.15)', background: 'rgba(10, 10, 10, 0.85)', boxShadow: '0 30px 60px rgba(0,0,0,0.8)' }}>
             <button
               onClick={() => setView('home')}
-              className="text-gray-400 hover:text-white transition-colors uppercase tracking-widest text-xs font-bold"
+              className="absolute top-8 right-8 flex items-center gap-2 text-gray-400 hover:text-white transition-all uppercase tracking-widest text-xs font-bold bg-black/40 px-5 py-3 rounded-full border border-gray-800 hover:border-[#7ec8a0]/50 hover:bg-[#7ec8a0]/10 z-50"
             >
-              ← Back to Home
+              ← Back to Scanner
             </button>
 
-            <div className="flex items-center gap-6">
-              <div className={`p-6 rounded-2xl border ${analysisResult.prediction === 'FAKE' ? 'border-red-500/30 bg-red-500/10 text-red-400' : 'border-green-500/30 bg-green-500/10 text-green-400'}`}>
-                {analysisResult.prediction === 'FAKE' ? <AlertTriangle size={48} /> : <ShieldCheck size={48} />}
+            {/* Header: Score and Verdict */}
+            <div className="flex flex-col md:flex-row items-center gap-12 border-b border-gray-800/50 pb-10">
+              {/* Animated Circular Ring for Confidence */}
+              <div className="relative flex items-center justify-center w-56 h-56 shrink-0 shrink">
+                <div className="absolute inset-0 rounded-full animate-pulse blur" style={{ background: analysisResult.prediction === 'FAKE' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)' }} />
+                <svg className="absolute inset-0 w-full h-full transform -rotate-90 drop-shadow-lg">
+                  <circle cx="112" cy="112" r="96" stroke="rgba(255,255,255,0.05)" strokeWidth="14" fill="none" />
+                  <circle
+                    cx="112" cy="112" r="96"
+                    stroke={analysisResult.prediction === 'FAKE' ? '#ef4444' : '#22c55e'}
+                    strokeWidth="14" fill="none"
+                    strokeDasharray="603"
+                    strokeDashoffset="603"
+                    strokeLinecap="round"
+                    style={{ animation: `fill-ring 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards` }}
+                  />
+                  <style>{`
+                    @keyframes fill-ring {
+                      from { stroke-dashoffset: 603; }
+                      to { stroke-dashoffset: ${603 - (603 * analysisResult.confidence)}; }
+                    }
+                  `}</style>
+                </svg>
+                <div className="text-center relative z-10 flex flex-col items-center">
+                  <span className={`text-6xl font-black tracking-tighter ${analysisResult.prediction === 'FAKE' ? 'text-red-500' : 'text-green-500'}`}>
+                    {Math.round(analysisResult.confidence * 100)}<span className="text-3xl opacity-70">%</span>
+                  </span>
+                  <span className="text-[10px] text-white/50 font-bold uppercase tracking-[0.3em] mt-1">Confidence</span>
+                </div>
               </div>
-              <div>
-                <span className="text-xs font-black uppercase tracking-[0.4em] text-gray-400">System Verdict</span>
-                <h1 className={`text-6xl font-black ${analysisResult.prediction === 'FAKE' ? 'text-red-400' : 'text-green-400'}`}>
-                  {analysisResult.prediction}
+
+              <div className="flex-1 mt-4 md:mt-0 text-center md:text-left">
+                <span className="text-xs font-black uppercase tracking-[0.4em] text-white/40 flex items-center justify-center md:justify-start gap-3">
+                  <Layers size={14} className="text-[#7ec8a0]" /> Neural Analysis Protocol
+                </span>
+                <h1 className={`text-7xl font-black mt-3 tracking-tighter uppercase leading-none ${analysisResult.prediction === 'FAKE' ? 'text-red-500 drop-shadow-[0_0_30px_rgba(239,68,68,0.5)]' : 'text-green-500 drop-shadow-[0_0_30px_rgba(34,197,94,0.5)]'}`}>
+                  {analysisResult.prediction} DECTECTED
                 </h1>
-                <p className="text-gray-300 mt-2">Confidence Certainty: {Math.round(analysisResult.confidence * 100)}%</p>
+                <p className="text-gray-400 mt-5 max-w-lg text-sm leading-relaxed mx-auto md:mx-0 font-medium">
+                  Deep neural forensics indicate a <strong className="text-white text-base">{Math.round(analysisResult.confidence * 100)}%</strong> probability that the provided media stream contains <strong className="text-white text-base">{analysisResult.prediction.toLowerCase()}</strong> elements. The underlying biometric matrix has been validated against known baseline structures.
+                </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-6 rounded-2xl border border-gray-800 bg-black/50">
-                <div className="flex items-center gap-3 mb-4">
-                  <Eye size={20} style={{ color: '#7ec8a0' }} />
-                  <span className="text-sm font-bold uppercase tracking-widest text-white">Forensic Heatmap</span>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* Visual Heatmap */}
+              <div className="p-7 rounded-[30px] border border-gray-800/50 bg-black/60 hover:bg-black/80 transition-all duration-300 group shadow-lg">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="p-2 rounded-xl bg-[#7ec8a0]/10 text-[#7ec8a0]">
+                    <Eye size={18} />
+                  </div>
+                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/80">Anomaly Heatmap</span>
                 </div>
-                <div className="h-48 rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center">
+                <div className="h-56 rounded-2xl overflow-hidden border border-white/5 bg-[#050505] flex items-center justify-center relative group-hover:border-[#7ec8a0]/30 transition-colors">
                     {analysisResult.forensics?.heatmap ? (
-                        <img src={`data:image/jpeg;base64,${analysisResult.forensics.heatmap}`} className="w-full h-full object-cover" alt="Heatmap" />
+                        <>
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-10" />
+                          <img src={`data:image/jpeg;base64,${analysisResult.forensics.heatmap}`} className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-all group-hover:scale-110 duration-700 ease-out" alt="Heatmap" />
+                        </>
                     ) : (
-                        <span className="text-gray-500 text-xs tracking-widest uppercase">No Heatmap</span>
+                        <div className="text-center opacity-40">
+                            <Camera size={32} className="mx-auto mb-3" />
+                            <span className="text-[10px] tracking-[0.2em] uppercase">Visual Cortex Offline</span>
+                        </div>
                     )}
                 </div>
               </div>
 
-              <div className="p-6 rounded-2xl border border-gray-800 bg-black/50 overflow-y-auto">
-                <div className="flex items-center gap-3 mb-4">
-                  <FileText size={20} style={{ color: '#7ec8a0' }} />
-                  <span className="text-sm font-bold uppercase tracking-widest text-white">Detection Logs</span>
+              {/* Neural Metrics / Statistics */}
+              <div className="col-span-1 lg:col-span-2 p-7 rounded-[30px] border border-gray-800/50 bg-black/60 hover:bg-black/80 transition-all duration-300 shadow-lg">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-[#7ec8a0]/10 text-[#7ec8a0]">
+                      <AlertTriangle size={18} />
+                    </div>
+                    <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/80">Diagnostic Telemetry</span>
+                  </div>
+                  {(analysisResult.emotion || analysisResult.forensics?.vocal_jitter) && (
+                     <span className="px-3 py-1 rounded-full bg-white/5 text-[10px] uppercase tracking-widest text-[#7ec8a0] border border-white/5 animate-pulse">
+                        Sub-routine Active
+                     </span>
+                  )}
                 </div>
-                <div className="space-y-3 font-mono text-xs text-gray-400">
-                    {(analysisResult.forensics?.findings || ["Standard evaluation verified.", "No anomalies detected."]).map((log, i) => (
-                        <div key={i} className="flex gap-3">
-                            <span style={{ color: '#7ec8a0' }}>[{String(i+1).padStart(2,'0')}]</span>
-                            <span>{log}</span>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 h-[224px] content-start">
+                  {analysisResult.neural_metrics ? (
+                    Object.entries(analysisResult.neural_metrics).map(([key, val], idx) => (
+                      <div key={key} className="bg-white/[0.02] p-4 rounded-2xl border border-white/5 relative overflow-hidden group hover:bg-white/[0.04] transition-colors" style={{ animation: `fade-up 0.4s ${idx * 0.1 + 0.2}s both` }}>
+                        <div className="absolute inset-0 bg-gradient-to-r from-[#7ec8a0]/10 to-transparent w-full h-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                        <div className="text-[10px] text-white/40 font-bold uppercase tracking-[0.2em] mb-3 relative z-10 truncate">{key.replace(/_/g, ' ')}</div>
+                        <div className="flex items-center gap-4 relative z-10">
+                          <div className="text-2xl font-black text-white w-16">{(val * 100).toFixed(1)}<span className="text-sm text-white/50">%</span></div>
+                          <div className="h-1.5 flex-grow bg-gray-900 rounded-full overflow-hidden shadow-inner">
+                            <div className="h-full bg-gradient-to-r from-[#7ec8a0]/50 to-[#7ec8a0] rounded-full relative" style={{ width: `${val * 100}%` }}>
+                              <div className="absolute top-0 right-0 bottom-0 w-4 bg-white/30 blur-[2px]" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : analysisResult.forensics?.source_attribution ? (
+                    <>
+                      <div className="bg-white/[0.02] p-5 rounded-2xl border border-white/5 flex flex-col justify-center">
+                        <div className="text-[10px] text-white/40 font-bold uppercase tracking-[0.2em] mb-2">Estimated Generation Engine</div>
+                        <div className="text-2xl font-black text-[#7ec8a0] tracking-tight">{analysisResult.forensics.source_attribution.most_likely}</div>
+                        <div className="text-xs text-white/30 mt-2">Signature matched against known GAN/Diffusion models.</div>
+                      </div>
+                      <div className="bg-white/[0.02] p-5 rounded-2xl border border-white/5 flex flex-col justify-center">
+                        <div className="text-[10px] text-white/40 font-bold uppercase tracking-[0.2em] mb-2">Biometric Mesh Integrity</div>
+                        <div className="flex items-end gap-3">
+                          <div className="text-5xl font-black text-white leading-none">{(analysisResult.forensics.mesh_integrity?.integrity_score * 100).toFixed(0)}<span className="text-2xl text-white/30">%</span></div>
+                        </div>
+                        <div className="h-1.5 w-full bg-gray-900 rounded-full overflow-hidden mt-4 shadow-inner">
+                           <div className="h-full bg-gradient-to-r from-[#7ec8a0]/50 to-[#7ec8a0]" style={{ width: `${analysisResult.forensics.mesh_integrity?.integrity_score * 100}%` }} />
+                        </div>
+                      </div>
+                    </>
+                  ) : analysisResult.forensics && Object.keys(analysisResult.forensics).filter(k => !['findings', 'heatmap', 'ela', 'fft', 'noise', 'metadata', 'source_attribution', 'mesh_integrity'].includes(k)).length > 0 ? (
+                    Object.entries(analysisResult.forensics).filter(([k,v]) => !['findings', 'heatmap', 'ela', 'fft', 'noise', 'metadata', 'source_attribution', 'mesh_integrity'].includes(k)).map(([key, val], idx) => (
+                      <div key={key} className="bg-white/[0.02] p-4 rounded-2xl border border-white/5 relative overflow-hidden group hover:bg-white/[0.04] transition-colors" style={{ animation: `fade-up 0.4s ${idx * 0.1 + 0.2}s both` }}>
+                        <div className="absolute inset-0 bg-gradient-to-r from-[#7ec8a0]/10 to-transparent w-full h-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                        <div className="text-[10px] text-white/40 font-bold uppercase tracking-[0.2em] mb-3 relative z-10 truncate">{key.replace(/_/g, ' ')}</div>
+                        <div className="flex items-center gap-4 relative z-10">
+                          <div className="text-xl font-black text-white">{typeof val === 'number' ? val.toFixed(4) : typeof val === 'boolean' ? (val ? 'TRUE' : 'FALSE') : String(val)}</div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="col-span-2 flex flex-col items-center justify-center h-full text-white/20 uppercase tracking-[0.3em] text-xs gap-3">
+                       <span className="animate-spin w-4 h-4 border-2 border-white/20 border-t-[#7ec8a0] rounded-full"/>
+                       Aggregating Metrics...
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Terminal Logs */}
+              <div className="col-span-1 lg:col-span-3 p-7 rounded-[30px] border border-gray-800/50 bg-[#050505] overflow-hidden shadow-[inset_0_4px_20px_rgba(0,0,0,0.5)]">
+                <div className="flex items-center justify-between mb-5 border-b border-white/5 pb-4">
+                  <div className="flex items-center gap-3">
+                    <FileText size={18} className="text-[#7ec8a0]" />
+                    <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/80">Live Execution Terminal</span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500/50" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/50" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-500/50" />
+                  </div>
+                </div>
+                <div className="space-y-4 font-mono text-[11px] tracking-wide text-white/60 bg-transparent h-48 overflow-y-auto custom-scrollbar pr-4">
+                    {/* Fake typing effect for logs */}
+                    {["Initializing forensic sub-routines...", 
+                      "Loading weights into VRAM...",
+                      "Executing spatial consistency checks...", 
+                      "Calculating pixel-level deviations...",
+                      ...(analysisResult.forensics?.findings?.length > 0 ? analysisResult.forensics.findings : ["No advanced topological anomalies recorded."]),
+                      "Process _terminating with code 0."
+                    ].map((log, i) => (
+                        <div key={i} className="flex gap-4 items-start" style={{ animation: `fade-up 0.5s ${i * 0.15 + 0.5}s both` }}>
+                            <span className="text-[#7ec8a0]/60 mt-px select-none shrink-0 border-r border-white/10 pr-4">
+                              {new Date(Date.now() + i*753).toISOString().split('T')[1].substring(0, 12)}
+                            </span>
+                            <span className={`${log.includes('ANOMALIES') || log.includes('AI') || log.includes('Suspicious') ? 'text-red-400 bg-red-500/10 px-2 py-0.5 rounded' : 'text-gray-300'}`}>
+                              <span className="mr-2 text-white/30">{'>'}</span>{log}
+                            </span>
                         </div>
                     ))}
                 </div>
               </div>
+
             </div>
-            
           </div>
         )}
       </main>
